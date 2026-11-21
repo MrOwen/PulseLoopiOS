@@ -286,6 +286,27 @@ final class CycleAnalyzerTests: XCTestCase {
         XCTAssertEqual(spiked.status.estimatedDate, day(9))
     }
 
+    /// The estimate must not drift with the smoothing lag. The raw run above the coverline can
+    /// start on the smoothed run's first day (a night on the line splits the raw run), one day
+    /// before it, or two calendar days before it (a missed night) — and all three must date
+    /// ovulation from the same first raw high.
+    func testOvulationEstimateIsStableAcrossSmoothingLags() {
+        let onTheSameDay: [Double?] = Array(repeating: 36.0, count: 7)
+            + [36.8, 36.0]                                // isolated spike, then a night on the line
+            + Array(repeating: 36.9, count: 5)            // the raw run starts on the candidate day
+        let oneDayBefore: [Double?] = Array(repeating: 36.0, count: 9)
+            + Array(repeating: 36.9, count: 5)            // raw run one day ahead of the smoothed one
+        var twoDaysBefore: [Double?] = Array(repeating: 36.0, count: 9)
+            + [36.9, nil]                                 // rise, then a night with no reading
+        twoDaysBefore += Array(repeating: 36.9, count: 4) // …so the smoothed run lags two calendar days
+
+        for temps in [onTheSameDay, oneDayBefore, twoDaysBefore] {
+            let shift = CycleAnalyzer.detectShift(in: records(temps: temps), cycleStart: day(0), calendar: calendar)!
+            XCTAssertEqual(shift.firstHighDay, day(9), "temps: \(temps)")
+            XCTAssertEqual(shift.status.estimatedDate, day(8), "temps: \(temps)")
+        }
+    }
+
     // MARK: - Presentation on the confirmation day
 
     /// The confirming high day is both "ovulation confirmed" and (until the evening) "fertile":
