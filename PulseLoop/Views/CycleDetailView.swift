@@ -79,6 +79,7 @@ struct CycleDetailView: View {
             emptyStateCard
             calendarCard(overview)
         }
+        referenceCard
         footer
     }
 
@@ -339,6 +340,52 @@ struct CycleDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    // MARK: - Reference
+
+    /// The setup tour's facts restated compactly at the bottom of the screen: one PulseCard
+    /// with a collapsed disclosure per tour page, so a number here can always be traced back
+    /// to how it works without leaving the app. Copy comes straight from `CycleEducation` —
+    /// no second hand-written version — and the hormonal gating is decided in the module.
+    private var referenceCard: some View {
+        PulseCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(CycleEducation.referenceTitle)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(PulseColors.textPrimary)
+                ForEach(CycleEducation.referencePages(hormonal: hormonal)) { page in
+                    referencePageDisclosure(page)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func referencePageDisclosure(_ page: CycleEducationPage) -> some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(page.sections) { section in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(section.title)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(PulseColors.textPrimary)
+                        ForEach(section.paragraphs, id: \.self) { paragraph in
+                            Text(paragraph)
+                                .font(.system(size: 12))
+                                .foregroundStyle(PulseColors.textSecondary)
+                                .lineSpacing(3)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 6)
+        } label: {
+            Text(page.title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(PulseColors.textSecondary)
+        }
+        .tint(PulseColors.textSecondary)
     }
 
     // MARK: - Banners & empty state

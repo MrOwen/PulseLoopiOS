@@ -17,6 +17,7 @@ final class CycleEducationTests: XCTestCase {
             CycleEducation.lutealLine,
             CycleEducation.ovulationAccuracyLine,
             CycleEducation.condensedDisclaimer,
+            CycleEducation.referenceTitle,
         ]
         return strings
     }
@@ -93,5 +94,50 @@ final class CycleEducationTests: XCTestCase {
         let text = joined([title, paragraphs])
         XCTAssertTrue(text.contains("Day 1"), "day 1 must be named as the anchor")
         XCTAssertTrue(text.contains("anchor"), "period logging must be presented as the anchor input")
+    }
+
+    // MARK: - Reference section
+
+    func testReferenceSectionHasItsOwnTitle() {
+        let title = CycleEducation.referenceTitle
+        XCTAssertFalse(title.isEmpty, "the reference card needs a header")
+        XCTAssertFalse(
+            CycleEducation.pages.contains { $0.title == title },
+            "the card header must not read as a fourth page"
+        )
+    }
+
+    func testReferenceRendersTheTourPagesDirectly() {
+        // No duplication: every reference page, section and paragraph must be drawn from
+        // the tour's own content — trimmed views are fine, new strings are not.
+        let tourSectionsByID = Dictionary(uniqueKeysWithValues: CycleEducation.pages.flatMap { page in
+            page.sections.map { ($0.id, $0) }
+        })
+        for hormonal in [false, true] {
+            for page in CycleEducation.referencePages(hormonal: hormonal) {
+                XCTAssertTrue(CycleEducation.pages.contains { $0.id == page.id }, "unknown page \(page.id)")
+                for section in page.sections {
+                    XCTAssertEqual(section, tourSectionsByID[section.id], "reference must reuse tour sections, not copies")
+                }
+            }
+        }
+    }
+
+    func testReferenceShowsAllTourPagesWhenNotHormonal() {
+        XCTAssertEqual(
+            CycleEducation.referencePages(hormonal: false).map(\.id),
+            CycleEducation.pages.map(\.id)
+        )
+    }
+
+    func testReferenceDropsTemperaturePagesUnderHormonalContraception() {
+        let ids = CycleEducation.referencePages(hormonal: true).map(\.id)
+        XCTAssertEqual(ids, ["what-you-log", "over-time"], "temperature analysis is paused under hormonal contraception")
+        let overTime = CycleEducation.referencePages(hormonal: true).first { $0.id == "over-time" }
+        XCTAssertFalse(
+            overTime?.sections.contains { $0.id == "honest-accuracy" } ?? true,
+            "luteal and ovulation accuracy don't apply without temperature analysis"
+        )
+        XCTAssertFalse(overTime?.sections.isEmpty ?? true, "the trimmed page must still carry content")
     }
 }

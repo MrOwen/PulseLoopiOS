@@ -46,6 +46,28 @@ enum CycleEducation {
         + "clinically validated; never use them on their own for contraception or medical "
         + "decisions. Talk to a healthcare professional about anything medical."
 
+    /// Title of the cycle detail screen's reference card — the collapsed entry point for the
+    /// same facts the tour walks through. Deliberately not any page's title.
+    static let referenceTitle = "How PulseLoop works"
+
+    /// The pages the detail screen's reference card shows, in tour order — the tour pages
+    /// themselves, never copies. Under hormonal contraception the temperature analysis is
+    /// paused, so the pages about the temperature signal and the fertility-accuracy fine
+    /// print are dropped; the gating is decided here as plain data, the view only renders.
+    static func referencePages(hormonal: Bool) -> [CycleEducationPage] {
+        guard hormonal else { return pages }
+        return pages
+            .filter { $0.id != "how-it-works" }
+            .map { page in
+                guard page.id == "over-time" else { return page }
+                return CycleEducationPage(
+                    id: page.id,
+                    title: page.title,
+                    sections: page.sections.filter { $0.id != "honest-accuracy" }
+                )
+            }
+    }
+
     // MARK: - Pages
 
     private static let howItWorks = CycleEducationPage(
