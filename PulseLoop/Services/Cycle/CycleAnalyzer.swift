@@ -53,6 +53,10 @@ struct CycleAnalyzerConfig {
     /// 95 % spread, so users whose phase truly runs short or long keep their own number.
     var lutealRange: ClosedRange<Int> = 9...17
     var defaultLutealDays: Int = 14
+    /// Bounds for the *calibrated* rise threshold: the user's own observed
+    /// follicular-to-luteal delta is clamped into this range before it may replace the
+    /// `risingDelta` default.
+    var risingDeltaRange: ClosedRange<Double> = 0.10...0.25
     /// `avoid` goal: widen the displayed fertile window by this many days on each side.
     var conservativeOpenLeadDays: Int = 2
     var conservativeCloseLagDays: Int = 1
@@ -357,6 +361,18 @@ enum CycleAnalyzer {
             let window = valid[max(0, index - 2)...index].compactMap(\.temperature)
             return CycleBBTService.median(window)
         }
+    }
+
+    // MARK: Personal rise calibration
+
+    /// The rise threshold in force: the median of the user's observed follicular-to-luteal
+    /// deltas, clamped to `risingDeltaRange`, once at least two completed cycles qualify —
+    /// the `risingDelta` default before that. The rule's structure is untouched; this only
+    /// sets the bar the confirming high must clear.
+    static func calibratedRisingDelta(from observations: [Double], config: CycleAnalyzerConfig = CycleAnalyzerConfig()) -> Double {
+        guard observations.count >= 2 else { return config.risingDelta }
+        let median = CycleBBTService.median(observations)
+        return min(max(median, config.risingDeltaRange.lowerBound), config.risingDeltaRange.upperBound)
     }
 
     // MARK: Personal statistics

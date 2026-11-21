@@ -455,6 +455,22 @@ final class CycleAnalyzerTests: XCTestCase {
         XCTAssertEqual(CycleCopy.headline(analysis, hormonal: false, today: day(52), calendar: calendar), "Period in ~4 days")
     }
 
+    // MARK: - Personal rise calibration
+
+    func testCalibratedRiseIsTheClampedMedianOfObservedDeltas() {
+        let config = CycleAnalyzerConfig()
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.12, 0.16], config: config), 0.14, accuracy: 0.0001)
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.10, 0.12, 0.30], config: config), 0.12, accuracy: 0.0001)
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.05, 0.07], config: config), 0.10, accuracy: 0.0001)
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.30, 0.50], config: config), 0.25, accuracy: 0.0001)
+    }
+
+    func testCalibratedRiseFallsBackToTheDefaultBelowTwoObservations() {
+        let config = CycleAnalyzerConfig()
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.30], config: config), 0.15, accuracy: 0.0001)
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [], config: config), 0.15, accuracy: 0.0001)
+    }
+
     func testPeriodStartButtonOnlyNearPredictedDate() {
         var days: [CycleDayRecord] = []
         for offset in [0, 28] {
