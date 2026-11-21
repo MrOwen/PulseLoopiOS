@@ -15,13 +15,16 @@ final class CycleCalendarShadingTests: XCTestCase {
     }
 
     /// Records for cycle day 1…n (day 1 == offset 0): `temps[i]` maps to day i+1.
-    private func records(temps: [Double?], periodDays: Set<Int> = [1, 2, 3, 4]) -> [CycleDayRecord] {
+    private func records(
+        temps: [Double?], periodDays: Set<Int> = [1, 2, 3, 4], spotting: Set<Int> = []
+    ) -> [CycleDayRecord] {
         temps.enumerated().map { index, temp in
             CycleDayRecord(
                 date: day(index),
                 temperature: temp,
                 isPeriod: periodDays.contains(index + 1),
-                isDisturbed: false
+                isDisturbed: false,
+                isSpotting: spotting.contains(index + 1)
             )
         }
     }
@@ -36,7 +39,8 @@ final class CycleCalendarShadingTests: XCTestCase {
         var facts: [String: CycleOverview.CycleDayFacts] = [:]
         for record in records {
             facts[CycleDay.key(for: record.date)] = CycleOverview.CycleDayFacts(
-                isPeriod: record.isPeriod, isDisturbed: record.isDisturbed, hasNote: false
+                isPeriod: record.isPeriod, isDisturbed: record.isDisturbed, hasNote: false,
+                isSpotting: record.isSpotting
             )
         }
         return CycleOverview(
@@ -181,6 +185,42 @@ final class CycleCalendarShadingTests: XCTestCase {
             isPeriod: true, isDisturbed: false, hasNote: false
         )
         XCTAssertEqual(shading(overview, day(16), today: today), .period)
+    }
+
+    // MARK: - Logged spotting
+
+    func testLoggedSpottingShadesAsSpotting() {
+        // Mid-luteal spotting: a logged fact of its own, drawn distinctly — not period, not plain.
+        let today = day(17)
+        let overview = makeOverview(records(temps: biphasicTemps(), spotting: [15]), today: today)
+        XCTAssertEqual(shading(overview, day(14), today: today), .spotting)
+        XCTAssertNotEqual(shading(overview, day(14), today: today), .period)
+        XCTAssertEqual(shading(overview, day(16), today: today), .luteal, "only the spotting day itself")
+    }
+
+    func testLoggedSpottingBeatsPredictedFertileAndLuteal() {
+        // Precedence: the user's logged fact wins over everything the analysis derives. The
+        // fixture injects a spotting fact into days that would otherwise read predicted (23),
+        // fertile (13) and luteal (16).
+        let today = day(17)
+        var overview = idealCycle(today: today)
+        for offset in [13, 16, 23] {
+            overview.loggedDays[CycleDay.key(for: day(offset))] = CycleOverview.CycleDayFacts(
+                isPeriod: false, isDisturbed: false, hasNote: false, isSpotting: true
+            )
+            XCTAssertEqual(shading(overview, day(offset), today: today), .spotting, "day(\(offset))")
+        }
+    }
+
+    func testLoggedSpottingShadesWithoutAnalysis() {
+        // Facts are classified before the analysis guard: spotting is visible even in cycle 1,
+        // where no cycle start exists yet and nothing else can be drawn.
+        let empty = CycleOverview(analysis: nil, chartDays: [], loggedDays: [
+            CycleDay.key(for: day(0)): CycleOverview.CycleDayFacts(
+                isPeriod: false, isDisturbed: false, hasNote: false, isSpotting: true
+            )
+        ])
+        XCTAssertEqual(shading(empty, day(0), today: day(0)), .spotting)
     }
 
     // MARK: - No analysis
