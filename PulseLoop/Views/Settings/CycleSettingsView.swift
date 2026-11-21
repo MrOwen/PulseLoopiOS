@@ -2,9 +2,10 @@ import SwiftUI
 import SwiftData
 import UserNotifications
 
-/// Cycle-tracking settings: master switch (behind an explicit disclaimer), tracking goal,
-/// hormonal-contraception flag, notifications, and the coach-sharing opt-in. Only reachable
-/// when the paired ring measures temperature (`CycleService.isAvailable`).
+/// Cycle-tracking settings: master switch (gated behind a 3-page setup tour ending in the
+/// disclaimer), tracking goal, hormonal-contraception flag, notifications, and the
+/// coach-sharing opt-in. Only reachable when the paired ring measures temperature
+/// (`CycleService.isAvailable`).
 struct CycleSettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(RingSyncCoordinator.self) private var coordinator
@@ -37,7 +38,7 @@ struct CycleSettingsView: View {
         .background(PulseColors.background)
         .navigationTitle("Cycle")
         .sheet(isPresented: $showDisclaimer) {
-            CycleDisclaimerSheet(
+            CycleSetupTourSheet(
                 onAccept: { goal, hormonal in
                     store.settings.goal = goal
                     store.settings.onHormonalContraception = hormonal
@@ -187,27 +188,74 @@ struct CycleSettingsView: View {
     """
 }
 
-/// The activation flow: disclaimer with explicit acceptance, tracking-goal choice, and the
-/// hormonal-contraception question — asked once, editable later in settings.
-struct CycleDisclaimerSheet: View {
+/// The activation flow: a three-page setup tour — how it works, what you log, what to expect —
+/// with the final page carrying the condensed disclaimer (still gating "I understand — enable"),
+/// the tracking goal, and the hormonal-contraception question. Copy comes from `CycleEducation`,
+/// which the cycle detail screen reuses.
+struct CycleSetupTourSheet: View {
     let onAccept: (CycleGoal, Bool) -> Void
     let onCancel: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var page = 0
     @State private var goal: CycleGoal = .understand
     @State private var hormonalContraception = false
 
     var body: some View {
+        TabView(selection: $page) {
+            informationPage(CycleEducation.pages[0], showsBack: false).tag(0)
+            informationPage(CycleEducation.pages[1], showsBack: true).tag(1)
+            enablePage.tag(2)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .background(PulseColors.background)
+        .presentationDetents([.large])
+    }
+
+    /// Pages 1–2: informational, walk forward only.
+    private func informationPage(_ data: CycleEducationPage, showsBack: Bool) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("Before you start")
+                Text(data.title)
                     .font(.system(size: 26, weight: .semibold, design: .rounded))
                     .foregroundStyle(PulseColors.textPrimary)
 
-                Text(CycleSettingsView.disclaimerText)
-                    .font(.system(size: 14))
-                    .foregroundStyle(PulseColors.textSecondary)
-                    .lineSpacing(4)
+                ForEach(data.sections) { section in
+                    sectionView(section)
+                }
+
+                HStack(spacing: 12) {
+                    if showsBack {
+                        SecondaryButton(title: "Back", systemImage: "chevron.left") { page -= 1 }
+                    }
+                    PrimaryButton(title: "Continue", systemImage: "chevron.right") { page += 1 }
+                }
+            }
+            .padding(24)
+        }
+    }
+
+    /// Page 3: the milestone ladder and honest accuracy, then the disclaimer, goal choice, and
+    /// the hormonal-contraception question. The enable button keeps gating acceptance.
+    private var enablePage: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                if let data = CycleEducation.pages.last {
+                    Text(data.title)
+                        .font(.system(size: 26, weight: .semibold, design: .rounded))
+                        .foregroundStyle(PulseColors.textPrimary)
+                    ForEach(data.sections) { section in
+                        sectionView(section)
+                    }
+                }
+
+                PulseCard {
+                    Text(CycleEducation.condensedDisclaimer)
+                        .font(.system(size: 13))
+                        .foregroundStyle(PulseColors.textSecondary)
+                        .lineSpacing(4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("I'm tracking to…")
@@ -231,8 +279,14 @@ struct CycleDisclaimerSheet: View {
                         .foregroundStyle(PulseColors.textPrimary)
                 }
                 .tint(PulseColors.accent)
+                if hormonalContraception {
+                    Text("Hormonal contraception suppresses ovulation, so temperature analysis and "
+                         + "fertility estimates are hidden — period logging and the calendar stay available.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(PulseColors.textSecondary)
+                }
 
-                PrimaryButton(title: "I understand — enable", systemImage: "checkmark") {
+                PrimaryButton(title: CycleEducation.enableButtonTitle, systemImage: "checkmark") {
                     onAccept(goal, hormonalContraception)
                     dismiss()
                 }
@@ -243,8 +297,20 @@ struct CycleDisclaimerSheet: View {
             }
             .padding(24)
         }
-        .background(PulseColors.background)
-        .presentationDetents([.large])
+    }
+
+    private func sectionView(_ section: CycleEducationSection) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(section.title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(PulseColors.textPrimary)
+            ForEach(section.paragraphs, id: \.self) { paragraph in
+                Text(paragraph)
+                    .font(.system(size: 14))
+                    .foregroundStyle(PulseColors.textSecondary)
+                    .lineSpacing(4)
+            }
+        }
     }
 
     private func goalOption(_ option: CycleGoal) -> some View {
