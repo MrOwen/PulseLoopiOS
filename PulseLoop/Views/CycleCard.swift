@@ -85,10 +85,7 @@ struct CycleVitalsCard: View {
     }
 
     private func logPeriodToday() {
-        let day = CycleRepository.dayOrNew(for: Date(), context: modelContext)
-        day.isPeriod = true
-        CycleRepository.save(day, context: modelContext)
-        CycleNotificationCenter.shared.scheduleNext()
+        CycleRepository.logPeriodDay(on: Date(), context: modelContext)
         reload()
     }
 }

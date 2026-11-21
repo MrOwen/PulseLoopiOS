@@ -340,6 +340,18 @@ enum CycleRepository {
         try? context.save()
         PulseDataChange.shared.notify()
     }
+
+    /// One-tap "my period started": upsert the row for `date` as a period day, persist it, and
+    /// reschedule the period prompts. The shared path behind the notification action, the
+    /// Vitals card button, and the detail screen's period button — so the mutual-exclusion
+    /// invariant in `save(_:context:)` (a period log clears spotting) always applies.
+    @MainActor
+    static func logPeriodDay(on date: Date, context: ModelContext) {
+        let day = dayOrNew(for: date, context: context)
+        day.isPeriod = true
+        save(day, context: context)
+        CycleNotificationCenter.shared.scheduleNext()
+    }
 }
 
 enum CoachRepository {

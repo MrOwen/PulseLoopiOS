@@ -561,8 +561,8 @@ enum CycleAnalyzer {
         calendar: Calendar
     ) -> [CycleFlag] {
         var flags: [CycleFlag] = []
-        if case let .confirmed(estimated, _) = shift?.status,
-           let shiftResult = shift,
+        if let shiftResult = shift,
+           case let .confirmed(estimated, _) = shiftResult.status,
            let lastValid = records.last(where: \.isValidTemperature),
            daysBetween(estimated, lastValid.date, calendar: calendar) >= 18,
            let temperature = lastValid.temperature,

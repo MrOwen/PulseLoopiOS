@@ -46,6 +46,45 @@ enum CycleEducation {
         + "clinically validated; never use them on their own for contraception or medical "
         + "decisions. Talk to a healthcare professional about anything medical."
 
+    /// The full disclaimer as shown on the settings screen — the long form the tour's
+    /// condensed disclaimer summarizes. Single source: the settings screen renders it
+    /// straight from here.
+    static let settingsDisclaimer = """
+    PulseLoop estimates your cycle phases from the skin temperature measured by your ring. \
+    These estimates are indicators, not certainties: their reliability depends on your sleep, \
+    how the ring is worn, and your physiology. This feature is not a medical device, is not \
+    clinically validated, and must never be used on its own as a contraception method or to \
+    make medical decisions. Talk to a healthcare professional for any medical question. \
+    PulseLoop's contributors accept no liability for how these estimates are used.
+    """
+
+    /// The hormonal-contraception note as the settings screen and the tour state it: what
+    /// pauses, what stays available.
+    static let hormonalContraceptionNote = "Hormonal contraception suppresses ovulation, so temperature analysis and fertility "
+        + "estimates are hidden — period logging and the calendar stay available."
+
+    /// The avoid-goal warning on the settings screen — a standing caution next to the picker.
+    static let avoidSettingsWarning = "Heads-up: PulseLoop shows a deliberately wider fertile window in this mode, "
+        + "but it is NOT a contraception method and must never be relied on as one."
+
+    /// The avoid-goal note on the tour's enable page — forward-looking, since the window
+    /// widens from here on.
+    static let avoidTourNote = "PulseLoop will show a deliberately wider fertile window, "
+        + "but it is NOT a contraception method. Never rely on it as one."
+
+    /// The avoid-goal reminder banner on the cycle detail screen.
+    static let avoidReminder = "Reminder: the fertile window shown is deliberately widened, "
+        + "but PulseLoop is not a contraception method."
+
+    /// The detail screen's hormonal-contraception banner — the same fact the settings note
+    /// states, worded for a screen where the analysis is already running.
+    static let hormonalBanner = "Hormonal contraception suppresses ovulation, so temperature analysis and fertility "
+        + "estimates are paused. Period logging and the calendar still work."
+
+    /// The always-on footnote under the cycle detail screen's cards.
+    static let estimatesFootnote = "Estimates only — not clinically validated, not a medical device, "
+        + "and never a contraception method."
+
     /// Title of the cycle detail screen's reference card — the collapsed entry point for the
     /// same facts the tour walks through. Deliberately not any page's title.
     static let referenceTitle = "How PulseLoop works"
