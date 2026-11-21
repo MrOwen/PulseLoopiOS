@@ -2,11 +2,12 @@ import SwiftUI
 import SwiftData
 
 /// How one day of the month grid is shaded. Precedence is total and top-down — a logged flow day
-/// beats a predicted one, which beats the fertile band, which beats the luteal phase — so every
-/// day resolves to exactly one tint. Kept out of the view (and free of SwiftUI) so the date
-/// arithmetic can be unit-tested on its own.
+/// beats a logged spotting day, which beats a predicted one, which beats the fertile band, which
+/// beats the luteal phase — so every day resolves to exactly one tint. Kept out of the view (and
+/// free of SwiftUI) so the date arithmetic can be unit-tested on its own.
 enum CycleCalendarShading: Equatable {
     case period
+    case spotting
     case predictedPeriod
     case fertile
     case luteal
@@ -24,7 +25,9 @@ enum CycleCalendarShading: Equatable {
     ) -> CycleCalendarShading {
         let day = calendar.startOfDay(for: day)
         let today = calendar.startOfDay(for: today)
-        if overview.loggedDays[CycleDay.key(for: day)]?.isPeriod == true { return .period }
+        let facts = overview.loggedDays[CycleDay.key(for: day)]
+        if facts?.isPeriod == true { return .period }
+        if facts?.isSpotting == true { return .spotting }
         guard let analysis = overview.analysis else { return .none }
         if isPredictedPeriod(day, analysis: analysis, today: today, calendar: calendar) { return .predictedPeriod }
         if analysis.drawnFertileWindow(calendar: calendar)?.contains(day) == true { return .fertile }
@@ -77,6 +80,7 @@ private extension CycleCalendarShading {
     var fill: Color {
         switch self {
         case .period: return PulseColors.cycle
+        case .spotting: return PulseColors.cycle.opacity(0.14)
         case .predictedPeriod: return PulseColors.cycle.opacity(0.22)
         case .fertile: return PulseColors.cycleFertile.opacity(0.30)
         case .luteal: return PulseColors.cycleLuteal.opacity(0.26)
@@ -84,11 +88,17 @@ private extension CycleCalendarShading {
         }
     }
 
-    /// Only predicted flow carries a ring — dashed, in the period color — so "expected" is told
-    /// apart from "logged" by shape, not merely by how strong the pink is.
+    /// Rings tell the logged-light cases apart from the filled ones by shape, not merely by how
+    /// strong the pink is: dashed = expected (predicted flow), solid thin = logged spotting.
     var ring: (color: Color, style: StrokeStyle)? {
-        guard self == .predictedPeriod else { return nil }
-        return (PulseColors.cycle.opacity(0.85), StrokeStyle(lineWidth: 1, dash: [2.5, 2.5]))
+        switch self {
+        case .predictedPeriod:
+            return (PulseColors.cycle.opacity(0.85), StrokeStyle(lineWidth: 1, dash: [2.5, 2.5]))
+        case .spotting:
+            return (PulseColors.cycle.opacity(0.55), StrokeStyle(lineWidth: 1))
+        default:
+            return nil
+        }
     }
 }
 
@@ -233,6 +243,7 @@ struct CycleCalendarLegend: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 14) {
                 item(label: "Period") { CycleShadingCircle(shading: .period) }
+                item(label: "Spotting") { CycleShadingCircle(shading: .spotting) }
                 item(label: "Predicted") { CycleShadingCircle(shading: .predictedPeriod) }
                 if showFertility {
                     item(label: "Fertile window") { CycleShadingCircle(shading: .fertile) }
@@ -267,7 +278,9 @@ struct CycleCalendarLegend: View {
 }
 
 /// Quick log sheet for one day — the *only* manual input the feature asks for: period yes/no,
-/// disturbed night yes/no, optional note. Saving an all-empty day removes the row.
+/// spotting yes/no, disturbed night yes/no, optional note. Period and spotting are mutually
+/// exclusive — they are two kinds of bleeding, and a day is one or the other. Saving an
+/// all-empty day removes the row.
 struct CycleLogSheet: View {
     let date: Date
     let onSaved: () -> Void
@@ -275,6 +288,7 @@ struct CycleLogSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @State private var isPeriod = false
+    @State private var isSpotting = false
     @State private var isDisturbed = false
     @State private var notes = ""
     @State private var loaded = false
@@ -286,6 +300,7 @@ struct CycleLogSheet: View {
                 .foregroundStyle(PulseColors.textPrimary)
 
             toggleRow("Period", subtitle: "A flow day — day 1 is worked out automatically", isOn: $isPeriod)
+            toggleRow("Spotting", subtitle: "Light bleeding — logged without starting a cycle", isOn: $isSpotting)
             toggleRow("Disturbed night", subtitle: "Fever, illness, alcohol… excludes it from the analysis", isOn: $isDisturbed)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -307,6 +322,10 @@ struct CycleLogSheet: View {
         .background(PulseColors.background)
         .presentationDetents([.medium])
         .onAppear { loadIfNeeded() }
+        // Mutually exclusive: switching one on clears the other, so the stored row always
+        // asserts at most one kind of bleeding.
+        .onChange(of: isPeriod) { _, on in if on { isSpotting = false } }
+        .onChange(of: isSpotting) { _, on in if on { isPeriod = false } }
     }
 
     private func toggleRow(_ title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
@@ -328,6 +347,7 @@ struct CycleLogSheet: View {
         loaded = true
         guard let existing = CycleRepository.day(for: date, context: modelContext) else { return }
         isPeriod = existing.isPeriod
+        isSpotting = existing.isSpotting
         isDisturbed = existing.isDisturbed
         notes = existing.notes ?? ""
     }
@@ -335,6 +355,7 @@ struct CycleLogSheet: View {
     private func save() {
         let day = CycleRepository.dayOrNew(for: date, context: modelContext)
         day.isPeriod = isPeriod
+        day.isSpotting = isSpotting
         day.isDisturbed = isDisturbed
         // A manual edit of the toggle overrides any auto-detection provenance.
         if !isDisturbed { day.disturbedAutoDetected = false }
