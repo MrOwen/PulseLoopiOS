@@ -972,7 +972,14 @@ final class CycleDay {
         keyFormatter.string(from: date)
     }
 
-    init(date: Date, isPeriod: Bool = false, isDisturbed: Bool = false, disturbedAutoDetected: Bool = false, isSpotting: Bool = false, notes: String? = nil) {
+    init(
+        date: Date,
+        isPeriod: Bool = false,
+        isDisturbed: Bool = false,
+        disturbedAutoDetected: Bool = false,
+        isSpotting: Bool = false,
+        notes: String? = nil
+    ) {
         let day = Calendar.current.startOfDay(for: date)
         self.date = day
         self.dateString = Self.key(for: day)
