@@ -253,7 +253,8 @@ enum SeedData {
 
     /// Demo period logs matching the seeded temperatures: one completed 28-day cycle and the
     /// current cycle started 27 days ago — so predictions, history, and the calendar all have
-    /// something to show the moment cycle tracking is switched on.
+    /// something to show the moment cycle tracking is switched on. One mid-cycle spotting day
+    /// exercises the third log option without touching the derived day 1s.
     @MainActor
     private static func seedCycleDays(_ context: ModelContext, now: Date, calendar: Calendar) {
         let today = calendar.startOfDay(for: now)
@@ -264,6 +265,9 @@ enum SeedData {
         for offset in -27...(-23) {
             guard let date = calendar.date(byAdding: .day, value: offset, to: today) else { continue }
             context.insert(CycleDay(date: date, isPeriod: true))
+        }
+        if let spotting = calendar.date(byAdding: .day, value: -13, to: today) {
+            context.insert(CycleDay(date: spotting, isSpotting: true))
         }
     }
 

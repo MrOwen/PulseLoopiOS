@@ -331,7 +331,11 @@ enum CycleRepository {
     @MainActor
     static func save(_ day: CycleDay, context: ModelContext) {
         day.updatedAt = Date()
-        let empty = !day.isPeriod && !day.isDisturbed && (day.notes?.isEmpty ?? true)
+        // Period and spotting are two kinds of bleeding; a row asserts at most one. A later
+        // period log (log sheet, one-tap buttons, notification action) clears the spotting
+        // flag instead of carrying both.
+        if day.isPeriod { day.isSpotting = false }
+        let empty = !day.isPeriod && !day.isSpotting && !day.isDisturbed && (day.notes?.isEmpty ?? true)
         if empty { context.delete(day) }
         try? context.save()
         PulseDataChange.shared.notify()

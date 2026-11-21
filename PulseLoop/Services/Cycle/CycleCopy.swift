@@ -55,10 +55,10 @@ enum CycleCopy {
             : "Day \(analysis.dayNumber) · \(phaseLabel(analysis, hormonal: false, today: today, calendar: calendar))"
     }
 
-    /// The phase word for the ring center and the subtitle. Sensiplan closes the fertile window
-    /// on the *evening* of the confirming high day, so on that day "ovulation confirmed" and
-    /// "fertile window" are both true — name the hinge instead of letting the two read as a
-    /// contradiction.
+    /// The phase word for the ring center and the subtitle. The thermal-shift rule (3-over-6)
+    /// closes the fertile window on the *evening* of the confirming high day, so on that day
+    /// "ovulation confirmed" and "fertile window" are both true — name the hinge instead of
+    /// letting the two read as a contradiction.
     static func phaseLabel(
         _ analysis: CycleAnalysis,
         hormonal: Bool,

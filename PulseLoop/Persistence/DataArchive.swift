@@ -1015,6 +1015,8 @@ nonisolated struct ArchiveCycleDay: Codable, Sendable {
     var isPeriod: Bool
     var isDisturbed: Bool
     var disturbedAutoDetected: Bool
+    /// Optional so archives written before spotting existed still decode (nil → false).
+    var isSpotting: Bool?
     var notes: String?
     var updatedAt: Date
 
@@ -1024,6 +1026,7 @@ nonisolated struct ArchiveCycleDay: Codable, Sendable {
         isPeriod = m.isPeriod
         isDisturbed = m.isDisturbed
         disturbedAutoDetected = m.disturbedAutoDetected
+        isSpotting = m.isSpotting
         notes = m.notes
         updatedAt = m.updatedAt
     }
@@ -1031,7 +1034,7 @@ nonisolated struct ArchiveCycleDay: Codable, Sendable {
     @MainActor func insert(into context: ModelContext) {
         let m = CycleDay(
             date: date, isPeriod: isPeriod, isDisturbed: isDisturbed,
-            disturbedAutoDetected: disturbedAutoDetected, notes: notes
+            disturbedAutoDetected: disturbedAutoDetected, isSpotting: isSpotting ?? false, notes: notes
         )
         // The init re-derives date/dateString from the local timezone; restore the exact stored
         // values — dateString is the unique upsert key, so a re-derived key could file a night

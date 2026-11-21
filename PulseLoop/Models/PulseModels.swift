@@ -936,10 +936,10 @@ final class CoachToolCall {
 }
 
 /// One calendar day of user-logged cycle facts. Deliberately minimal: only what the user
-/// asserts (period day, disturbed night, note) is stored — cycle starts, phases, coverline,
-/// ovulation, and predictions are all *derived* by `CycleAnalyzer` so they can never drift
-/// out of sync with the source facts. Highly sensitive data: never leaves the device and is
-/// excluded from coach context and diagnostics exports unless the user explicitly opts in.
+/// asserts (period day, spotting day, disturbed night, note) is stored — cycle starts, phases,
+/// coverline, ovulation, and predictions are all *derived* by `CycleAnalyzer` so they can never
+/// drift out of sync with the source facts. Highly sensitive data: never leaves the device and
+/// is excluded from coach context and diagnostics exports unless the user explicitly opts in.
 @Model
 final class CycleDay {
     #Index<CycleDay>([\.date])
@@ -950,6 +950,10 @@ final class CycleDay {
     var isPeriod: Bool                // a flow day (day 1 is derived, not stored)
     var isDisturbed: Bool             // night excluded from temperature analysis (fever, alcohol…)
     var disturbedAutoDetected: Bool   // exclusion was suggested by the app, not typed by the user
+    /// Light bleeding outside a period. Stored separately from `isPeriod` — a spotting day must
+    /// never start a cycle or alter the flow statistics. Defaulted so the SwiftData migration
+    /// stays lightweight and legacy rows decode as non-spotting days.
+    var isSpotting: Bool = false
     var notes: String?
     var updatedAt: Date
 
@@ -968,13 +972,14 @@ final class CycleDay {
         keyFormatter.string(from: date)
     }
 
-    init(date: Date, isPeriod: Bool = false, isDisturbed: Bool = false, disturbedAutoDetected: Bool = false, notes: String? = nil) {
+    init(date: Date, isPeriod: Bool = false, isDisturbed: Bool = false, disturbedAutoDetected: Bool = false, isSpotting: Bool = false, notes: String? = nil) {
         let day = Calendar.current.startOfDay(for: date)
         self.date = day
         self.dateString = Self.key(for: day)
         self.isPeriod = isPeriod
         self.isDisturbed = isDisturbed
         self.disturbedAutoDetected = disturbedAutoDetected
+        self.isSpotting = isSpotting
         self.notes = notes
         self.updatedAt = Date()
     }
