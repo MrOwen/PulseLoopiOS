@@ -60,6 +60,11 @@ struct CycleDetailView: View {
             if let accuracy = overview.accuracy {
                 accuracyCard(accuracy)
             }
+            if let note = CycleCopy.calibrationNote(analysis) {
+                Text(note)
+                    .font(.system(size: 11))
+                    .foregroundStyle(PulseColors.textMuted)
+            }
             if CycleCopy.shouldOfferPeriodStart(analysis) {
                 PeriodStartButton { logPeriod(on: Date()) }
             }
