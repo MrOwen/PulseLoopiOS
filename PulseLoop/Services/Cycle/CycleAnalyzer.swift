@@ -34,8 +34,9 @@ enum CycleGoal: String, Codable, CaseIterable, Identifiable {
 }
 
 /// Tunable knobs of the detection. Defaults reflect *skin* temperature from a finger ring:
-/// damped and noisier than the oral BBT the clinical Sensiplan rules were written for, so
-/// the rise threshold is an engineering parameter — explicitly not the clinical 0.2 °C.
+/// damped and noisier than the oral BBT the classical thermal-shift rule (3-over-6) was
+/// written for, so the rise threshold is an engineering parameter — explicitly not the
+/// clinical 0.2 °C.
 struct CycleAnalyzerConfig {
     /// Required excess of the confirming high over the coverline (on smoothed values).
     var risingDelta: Double = 0.15
@@ -151,8 +152,8 @@ struct CycleAnalysis: Equatable {
 
 // MARK: - Analyzer
 
-/// Pure, deterministic cycle analysis: Sensiplan's 3-over-6 mechanics (with both classical
-/// exceptions) applied to *baseline-relative smoothed skin temperature*, plus next-period /
+/// Pure, deterministic cycle analysis: the thermal-shift rule (3-over-6) with both classical
+/// exceptions applied to *baseline-relative smoothed skin temperature*, plus next-period /
 /// fertile-window estimation from personal history. No I/O, no clock reads, no globals —
 /// everything comes in through the arguments so the whole thing is trivially unit-testable.
 enum CycleAnalyzer {
@@ -240,7 +241,7 @@ enum CycleAnalyzer {
         days.filter { $0.date >= start && $0.date < end }
     }
 
-    // MARK: Thermal shift (Sensiplan 3-over-6 mechanics on smoothed values)
+    // MARK: Thermal shift (3-over-6 on smoothed values)
 
     struct ShiftResult: Equatable {
         var coverline: Double
@@ -274,7 +275,7 @@ enum CycleAnalyzer {
             guard smoothed[candidate] > coverline else { continue }
 
             // The smoothing that tames the ring's quantization also lags: the first *raw* value
-            // above the line usually precedes the first smoothed one by a day. Sensiplan's "first
+            // above the line usually precedes the first smoothed one by a day. The rule's "first
             // higher measurement" is that raw value, and ovulation is dated from it (Heidelberg
             // NFP group: on average 0.9 days before it, 81 % within 0–2 days) — so walk back over
             // the raw run above the line, at most the smoothing window. Confirmation stays on the
@@ -415,7 +416,7 @@ enum CycleAnalyzer {
         config: CycleAnalyzerConfig
     ) -> ClosedRange<Date>? {
         // Opening, most personal rule available first:
-        //  - Sensiplan minus-8: earliest first-high cycle day across past cycles − 8;
+        //  - minus-8 rule: earliest first-high cycle day across past cycles − 8;
         //  - Döring fallback: shortest cycle length − 20;
         //  - no history: day 6.
         // Never earlier than day 6 (period + the first infertile days), except in `avoid`.
@@ -434,7 +435,7 @@ enum CycleAnalyzer {
         var close: Date?
         switch ovulation {
         case let .confirmed(_, confirmedOn):
-            // Sensiplan closes the fertile window on the evening of the confirming high day.
+            // The rule closes the fertile window on the evening of the confirming high day.
             close = confirmedOn
         case let .probable(estimated):
             close = calendar.date(byAdding: .day, value: 1, to: estimated)

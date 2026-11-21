@@ -2,7 +2,7 @@ import XCTest
 @testable import PulseLoop
 
 /// Pure-algorithm tests for the cycle analyzer: cycle-start derivation, the 3-over-6 rule
-/// with both Sensiplan exceptions, disturbed-day handling, predictions, and the status copy.
+/// with both classical exceptions, disturbed-day handling, predictions, and the status copy.
 /// Everything runs on synthetic `CycleDayRecord` arrays — no store, no clock.
 @MainActor
 final class CycleAnalyzerTests: XCTestCase {
@@ -66,7 +66,7 @@ final class CycleAnalyzerTests: XCTestCase {
         guard case let .confirmed(estimated, confirmedOn) = analysis.ovulation else {
             return XCTFail("expected confirmed, got \(analysis.ovulation)")
         }
-        // Raw highs start day 11 — Sensiplan's first higher measurement — so ovulation is dated
+        // Raw highs start day 11 — the rule's first higher measurement — so ovulation is dated
         // the day before (day 10). The 3-day rolling median delays the smoothed rise to day 12 and
         // confirmation lands on the 3rd smoothed high (day 14).
         XCTAssertEqual(estimated, day(9))
@@ -320,7 +320,7 @@ final class CycleAnalyzerTests: XCTestCase {
         XCTAssertEqual(analysis.flags, [.longCycle])
     }
 
-    /// The smoothed series lags the raw one by a day, but Sensiplan dates ovulation from the
+    /// The smoothed series lags the raw one by a day, but the rule dates ovulation from the
     /// first *raw* value above the line. An isolated spike before the rise is not that value:
     /// the walk-back stops at the first raw value on or below the line.
     func testOvulationIsDatedFromTheFirstRawHigh() {
