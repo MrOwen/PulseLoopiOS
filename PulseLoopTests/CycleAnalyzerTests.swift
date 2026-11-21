@@ -2,7 +2,7 @@ import XCTest
 @testable import PulseLoop
 
 /// Pure-algorithm tests for the cycle analyzer: cycle-start derivation, the 3-over-6 rule
-/// with both Sensiplan exceptions, disturbed-day handling, predictions, and the status copy.
+/// with both classical exceptions, disturbed-day handling, predictions, and the status copy.
 /// Everything runs on synthetic `CycleDayRecord` arrays — no store, no clock.
 @MainActor
 final class CycleAnalyzerTests: XCTestCase {
@@ -103,7 +103,7 @@ final class CycleAnalyzerTests: XCTestCase {
         guard case let .confirmed(estimated, confirmedOn) = analysis.ovulation else {
             return XCTFail("expected confirmed, got \(analysis.ovulation)")
         }
-        // Raw highs start day 11 — Sensiplan's first higher measurement — so ovulation is dated
+        // Raw highs start day 11 — the rule's first higher measurement — so ovulation is dated
         // the day before (day 10). The 3-day rolling median delays the smoothed rise to day 12 and
         // confirmation lands on the 3rd smoothed high (day 14).
         XCTAssertEqual(estimated, day(9))
@@ -244,6 +244,55 @@ final class CycleAnalyzerTests: XCTestCase {
         XCTAssertEqual(analysis.completedCycles.map(\.lengthDays), [28, 28])
     }
 
+    // MARK: - Personal luteal statistics
+
+    /// Builds a history of completed 28-day cycles with the given luteal lengths (period days
+    /// 1–4, then a biphasic curve whose raw rise lands `luteal` days before the next period),
+    /// followed by an open current cycle with no temperatures yet, analyzed mid-cycle — day 11,
+    /// below every flag threshold.
+    private func analysisWithCompletedLuteals(_ luteals: [Int]) -> CycleAnalysis {
+        var days: [CycleDayRecord] = []
+        for (cycle, luteal) in luteals.enumerated() {
+            let riseIndex = 29 - luteal                   // first raw high on cycle day riseIndex + 1
+            let temps: [Double?] = Array(repeating: 36.0, count: riseIndex)
+                + Array(repeating: 36.5, count: 28 - riseIndex)
+            for (index, temp) in temps.enumerated() {
+                days.append(CycleDayRecord(
+                    date: day(cycle * 28 + index),
+                    temperature: temp,
+                    isPeriod: index < 4,
+                    isDisturbed: false
+                ))
+            }
+        }
+        let currentStart = luteals.count * 28
+        for index in 0..<10 {
+            days.append(CycleDayRecord(date: day(currentStart + index), temperature: nil,
+                                       isPeriod: index < 4, isDisturbed: false))
+        }
+        return CycleAnalyzer.analyze(days: days, goal: .understand, today: day(currentStart + 10), calendar: calendar)!
+    }
+
+    /// The personal luteal median is clamped to the published 95 % spread, 9–17 days: a personal
+    /// number at the edges survives, one beyond them keeps the nearest edge.
+    func testPersonalLutealMedianKeepsPhasesInsideThePublishedSpread() {
+        XCTAssertEqual(analysisWithCompletedLuteals([9]).lutealLengthDays, 9)
+        XCTAssertEqual(analysisWithCompletedLuteals([17]).lutealLengthDays, 17)
+        XCTAssertEqual(analysisWithCompletedLuteals([8]).lutealLengthDays, 9)
+        XCTAssertEqual(analysisWithCompletedLuteals([18]).lutealLengthDays, 17)
+    }
+
+    /// One short luteal phase among normal ones is noise: the median over the recent cycles
+    /// absorbs it, and neither the median nor any flag reacts.
+    func testSingleShortLutealLeavesMedianAndFlagsUntouched() {
+        let withNoise = analysisWithCompletedLuteals([12, 13, 14, 9])
+        let withoutNoise = analysisWithCompletedLuteals([12, 13, 14])
+        XCTAssertEqual(withNoise.lutealLengthDays, 13)
+        XCTAssertEqual(withNoise.lutealLengthDays, withoutNoise.lutealLengthDays)
+        XCTAssertEqual(withNoise.flags, withoutNoise.flags)
+        XCTAssertEqual(withNoise.flags, [])
+    }
+
     func testAvoidGoalWidensTheFertileWindow() {
         var days: [CycleDayRecord] = []
         for offset in [0, 28] {
@@ -308,7 +357,7 @@ final class CycleAnalyzerTests: XCTestCase {
         XCTAssertEqual(analysis.flags, [.longCycle])
     }
 
-    /// The smoothed series lags the raw one by a day, but Sensiplan dates ovulation from the
+    /// The smoothed series lags the raw one by a day, but the rule dates ovulation from the
     /// first *raw* value above the line. An isolated spike before the rise is not that value:
     /// the walk-back stops at the first raw value on or below the line.
     func testOvulationIsDatedFromTheFirstRawHigh() {
@@ -321,6 +370,27 @@ final class CycleAnalyzerTests: XCTestCase {
         let spiked = CycleAnalyzer.detectShift(in: records(temps: temps), cycleStart: day(0), calendar: calendar)!
         XCTAssertEqual(spiked.firstHighDay, day(10))
         XCTAssertEqual(spiked.status.estimatedDate, day(9))
+    }
+
+    /// The estimate must not drift with the smoothing lag. The raw run above the coverline can
+    /// start on the smoothed run's first day (a night on the line splits the raw run), one day
+    /// before it, or two calendar days before it (a missed night) — and all three must date
+    /// ovulation from the same first raw high.
+    func testOvulationEstimateIsStableAcrossSmoothingLags() {
+        let onTheSameDay: [Double?] = Array(repeating: 36.0, count: 7)
+            + [36.8, 36.0]                                // isolated spike, then a night on the line
+            + Array(repeating: 36.9, count: 5)            // the raw run starts on the candidate day
+        let oneDayBefore: [Double?] = Array(repeating: 36.0, count: 9)
+            + Array(repeating: 36.9, count: 5)            // raw run one day ahead of the smoothed one
+        var twoDaysBefore: [Double?] = Array(repeating: 36.0, count: 9)
+            + [36.9, nil]                                 // rise, then a night with no reading
+        twoDaysBefore += Array(repeating: 36.9, count: 4) // …so the smoothed run lags two calendar days
+
+        for temps in [onTheSameDay, oneDayBefore, twoDaysBefore] {
+            let shift = CycleAnalyzer.detectShift(in: records(temps: temps), cycleStart: day(0), calendar: calendar)!
+            XCTAssertEqual(shift.firstHighDay, day(9), "temps: \(temps)")
+            XCTAssertEqual(shift.status.estimatedDate, day(8), "temps: \(temps)")
+        }
     }
 
     // MARK: - Presentation on the confirmation day
