@@ -73,19 +73,7 @@ enum CycleService {
         let dayCount = CycleAnalyzer.daysBetween(windowStart, today, calendar: calendar) + 1
         let allDays = (0..<dayCount).compactMap { calendar.date(byAdding: .day, value: $0, to: windowStart) }
 
-        let temperatures = CycleBBTService.nightlyTemperatures(days: allDays, context: context)
-        let loggedByKey = Dictionary(uniqueKeysWithValues: logged.map { ($0.dateString, $0) })
-
-        let records = zip(allDays, temperatures).map { day, night -> CycleDayRecord in
-            let facts = loggedByKey[CycleDay.key(for: day)]
-            return CycleDayRecord(
-                date: day,
-                temperature: night.celsius,
-                isPeriod: facts?.isPeriod ?? false,
-                isDisturbed: facts?.isDisturbed ?? false,
-                isSpotting: facts?.isSpotting ?? false
-            )
-        }
+        let records = dayRecords(days: allDays, logged: logged, context: context)
 
         let settings = CycleSettingsStore.shared.settings
         // Under hormonal contraception the thermal analysis has no biological meaning: keep
@@ -122,10 +110,16 @@ enum CycleService {
     static func chartDays(for cycle: CompletedCycleSummary, context: ModelContext) -> [CycleChartDay] {
         let calendar = Calendar.current
         let days = (0..<cycle.lengthDays).compactMap { calendar.date(byAdding: .day, value: $0, to: cycle.start) }
-        let temperatures = CycleBBTService.nightlyTemperatures(days: days, context: context)
-        let logged = CycleRepository.days(context: context)
+        let records = dayRecords(days: days, logged: CycleRepository.days(context: context), context: context)
+        return makeChartDays(from: records)
+    }
+
+    /// Merge user-logged `CycleDay` facts with the nightly temperatures into analyzer records
+    /// for `days` — the one builder behind the overview and the past-cycle chart.
+    private static func dayRecords(days: [Date], logged: [CycleDay], context: ModelContext) -> [CycleDayRecord] {
         let loggedByKey = Dictionary(uniqueKeysWithValues: logged.map { ($0.dateString, $0) })
-        let records = zip(days, temperatures).map { day, night -> CycleDayRecord in
+        let temperatures = CycleBBTService.nightlyTemperatures(days: days, context: context)
+        return zip(days, temperatures).map { day, night -> CycleDayRecord in
             let facts = loggedByKey[CycleDay.key(for: day)]
             return CycleDayRecord(
                 date: day,
@@ -135,7 +129,6 @@ enum CycleService {
                 isSpotting: facts?.isSpotting ?? false
             )
         }
-        return makeChartDays(from: records)
     }
 
     /// Chart rows for one cycle's records, carrying both the raw nightly median and the smoothed
