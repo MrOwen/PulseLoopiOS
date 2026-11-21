@@ -375,6 +375,27 @@ enum CycleAnalyzer {
         return min(max(median, config.risingDeltaRange.lowerBound), config.risingDeltaRange.upperBound)
     }
 
+    /// One cycle's follicular-to-luteal amplitude, read off the smoothed series: the median
+    /// of the luteal run (from the rule's first raw high onward) minus the median of the
+    /// follicular values before it. Confirmed shifts only — a `probable` end-of-cycle rise
+    /// has too short a luteal run to measure. Detection itself is unchanged; this reuses the
+    /// same rule result as data, so it stays deterministic and cheap.
+    static func observedRisingDelta(
+        in cycleRecords: [CycleDayRecord],
+        cycleStart: Date,
+        calendar: Calendar = .current,
+        config: CycleAnalyzerConfig = CycleAnalyzerConfig()
+    ) -> Double? {
+        guard let shift = detectShift(in: cycleRecords, cycleStart: cycleStart, calendar: calendar, config: config),
+              case .confirmed = shift.status else { return nil }
+        let valid = cycleRecords.filter(\.isValidTemperature)
+        let smoothed = smoothedValues(valid)
+        guard let firstHighIndex = valid.firstIndex(where: { $0.date == shift.firstHighDay }),
+              firstHighIndex >= 3, smoothed.count - firstHighIndex >= 3 else { return nil }
+        return CycleBBTService.median(Array(smoothed[firstHighIndex...]))
+            - CycleBBTService.median(Array(smoothed[..<firstHighIndex]))
+    }
+
     // MARK: Personal statistics
 
     private static func lutealLength(completed: [CompletedCycleSummary], config: CycleAnalyzerConfig) -> Int {

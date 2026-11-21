@@ -471,6 +471,25 @@ final class CycleAnalyzerTests: XCTestCase {
         XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [], config: config), 0.15, accuracy: 0.0001)
     }
 
+    func testObservedDeltaIsTheLutealMinusFollicularMedian() throws {
+        // Textbook biphasic: 10 nights at 36.0, then 36.5 — amplitude 0.5.
+        let delta = try XCTUnwrap(CycleAnalyzer.observedRisingDelta(
+            in: records(temps: biphasicTemps()), cycleStart: day(0), calendar: calendar
+        ))
+        XCTAssertEqual(delta, 0.5, accuracy: 0.0001)
+    }
+
+    func testObservedDeltaNeedsAConfirmedShift() {
+        // Rise underway but unconfirmed (only 2 smoothed highs) — too short a luteal run to measure.
+        XCTAssertNil(CycleAnalyzer.observedRisingDelta(
+            in: records(temps: biphasicTemps(highDays: 3)), cycleStart: day(0), calendar: calendar
+        ))
+        // Flat cycle — nothing to measure.
+        XCTAssertNil(CycleAnalyzer.observedRisingDelta(
+            in: records(temps: Array(repeating: 36.0, count: 20)), cycleStart: day(0), calendar: calendar
+        ))
+    }
+
     func testPeriodStartButtonOnlyNearPredictedDate() {
         var days: [CycleDayRecord] = []
         for offset in [0, 28] {
