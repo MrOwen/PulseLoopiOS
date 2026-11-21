@@ -430,7 +430,7 @@ struct CycleDetailView: View {
     }
 
     private var footer: some View {
-        Text("Estimates only — not clinically validated, not a medical device, and never a contraception method.")
+        Text(CycleEducation.estimatesFootnote)
             .font(.system(size: 10))
             .foregroundStyle(PulseColors.textMuted)
             .frame(maxWidth: .infinity)
@@ -441,11 +441,10 @@ struct CycleDetailView: View {
     private func bannersToShow(_ analysis: CycleAnalysis) -> [String] {
         var messages: [String] = []
         if hormonal {
-            messages.append("Hormonal contraception suppresses ovulation, so temperature analysis and fertility "
-                + "estimates are paused. Period logging and the calendar still work.")
+            messages.append(CycleEducation.hormonalBanner)
         }
         if settings.settings.goal == .avoid && !hormonal {
-            messages.append("Reminder: the fertile window shown is deliberately widened, but PulseLoop is not a contraception method.")
+            messages.append(CycleEducation.avoidReminder)
         }
         messages.append(contentsOf: analysis.flags.map(CycleCopy.flagMessage))
         return messages

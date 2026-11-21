@@ -31,7 +31,7 @@ struct CycleSettingsView: View {
                 }
 
                 SectionHeader(title: "About these estimates", action: nil)
-                StatusCopy(title: "Not a medical device", body: Self.disclaimerText)
+                StatusCopy(title: "Not a medical device", body: CycleEducation.settingsDisclaimer)
             }
             .padding()
         }
@@ -69,8 +69,7 @@ struct CycleSettingsView: View {
             .tint(PulseColors.accent)
         }
         if store.settings.goal == .avoid {
-            Text("Heads-up: PulseLoop shows a deliberately wider fertile window in this mode, "
-                 + "but it is NOT a contraception method and must never be relied on as one.")
+            Text(CycleEducation.avoidSettingsWarning)
                 .font(.caption).foregroundStyle(PulseColors.warning)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 4)
@@ -81,8 +80,7 @@ struct CycleSettingsView: View {
             set: { store.settings.onHormonalContraception = $0 }
         ))
         if store.settings.onHormonalContraception {
-            caption("Hormonal contraception suppresses ovulation, so temperature analysis and fertility "
-                + "estimates are hidden — period logging and the calendar stay available.")
+            caption(CycleEducation.hormonalContraceptionNote)
         }
     }
 
@@ -177,15 +175,6 @@ struct CycleSettingsView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(PulseColors.borderSubtle, lineWidth: 1))
     }
-
-    static let disclaimerText = """
-    PulseLoop estimates your cycle phases from the skin temperature measured by your ring. \
-    These estimates are indicators, not certainties: their reliability depends on your sleep, \
-    how the ring is worn, and your physiology. This feature is not a medical device, is not \
-    clinically validated, and must never be used on its own as a contraception method or to \
-    make medical decisions. Talk to a healthcare professional for any medical question. \
-    PulseLoop's contributors accept no liability for how these estimates are used.
-    """
 }
 
 /// The activation flow: a three-page setup tour — how it works, what you log, what to expect —
@@ -267,8 +256,7 @@ struct CycleSetupTourSheet: View {
                 }
 
                 if goal == .avoid {
-                    Text("PulseLoop will show a deliberately wider fertile window, "
-                         + "but it is NOT a contraception method. Never rely on it as one.")
+                    Text(CycleEducation.avoidTourNote)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(PulseColors.warning)
                 }
@@ -280,8 +268,7 @@ struct CycleSetupTourSheet: View {
                 }
                 .tint(PulseColors.accent)
                 if hormonalContraception {
-                    Text("Hormonal contraception suppresses ovulation, so temperature analysis and "
-                         + "fertility estimates are hidden — period logging and the calendar stay available.")
+                    Text(CycleEducation.hormonalContraceptionNote)
                         .font(.system(size: 13))
                         .foregroundStyle(PulseColors.textSecondary)
                 }

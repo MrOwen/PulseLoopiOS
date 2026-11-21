@@ -17,6 +17,13 @@ final class CycleEducationTests: XCTestCase {
             CycleEducation.lutealLine,
             CycleEducation.ovulationAccuracyLine,
             CycleEducation.condensedDisclaimer,
+            CycleEducation.settingsDisclaimer,
+            CycleEducation.hormonalContraceptionNote,
+            CycleEducation.avoidSettingsWarning,
+            CycleEducation.avoidTourNote,
+            CycleEducation.avoidReminder,
+            CycleEducation.hormonalBanner,
+            CycleEducation.estimatesFootnote,
             CycleEducation.referenceTitle,
         ]
         return strings
@@ -55,7 +62,7 @@ final class CycleEducationTests: XCTestCase {
         XCTAssertFalse(CycleEducation.condensedDisclaimer.isEmpty)
         XCTAssertLessThan(
             CycleEducation.condensedDisclaimer.count,
-            CycleSettingsView.disclaimerText.count,
+            CycleEducation.settingsDisclaimer.count,
             "the tour disclaimer should be a condensed version of the settings one"
         )
         XCTAssertEqual(CycleEducation.enableButtonTitle, "I understand — enable")
