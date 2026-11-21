@@ -17,7 +17,8 @@ final class CycleAnalyzerTests: XCTestCase {
     private func records(
         temps: [Double?],
         periodDays: Set<Int> = [1, 2, 3, 4],
-        disturbed: Set<Int> = []
+        disturbed: Set<Int> = [],
+        spotting: Set<Int> = []
     ) -> [CycleDayRecord] {
         temps.enumerated().map { index, temp in
             let dayNumber = index + 1
@@ -25,7 +26,8 @@ final class CycleAnalyzerTests: XCTestCase {
                 date: day(index),
                 temperature: temp,
                 isPeriod: periodDays.contains(dayNumber),
-                isDisturbed: disturbed.contains(dayNumber)
+                isDisturbed: disturbed.contains(dayNumber),
+                isSpotting: spotting.contains(dayNumber)
             )
         }
     }
@@ -54,6 +56,41 @@ final class CycleAnalyzerTests: XCTestCase {
             goal: .understand, today: day(1), calendar: calendar
         )
         XCTAssertNil(analysis)
+    }
+
+    func testSpottingDayDoesNotStartACycleOrAlterTheStatistics() {
+        // A completed 28-day cycle followed by a fresh period: the analyzer's exact history
+        // shape. Logging a spotting day mid-luteal must leave every derived number untouched.
+        let temps: [Double?] = Array(repeating: 36.0, count: 10)
+            + Array(repeating: 36.5, count: 18)
+            + Array(repeating: 36.0, count: 12)
+        let periodDays: Set<Int> = [1, 2, 3, 4, 29, 30, 31, 32]
+        let today = day(35)
+        let clean = CycleAnalyzer.analyze(
+            days: records(temps: temps, periodDays: periodDays),
+            goal: .understand, today: today, calendar: calendar
+        )!
+        let withSpotting = CycleAnalyzer.analyze(
+            days: records(temps: temps, periodDays: periodDays, spotting: [15]),
+            goal: .understand, today: today, calendar: calendar
+        )!
+        XCTAssertEqual(withSpotting.cycleStart, clean.cycleStart, "spotting must not move day 1")
+        XCTAssertEqual(withSpotting.cycleStart, day(28))
+        XCTAssertEqual(
+            withSpotting.completedCycles.map(\.lengthDays),
+            clean.completedCycles.map(\.lengthDays),
+            "a spotting day must not enter the cycle-length statistics"
+        )
+        XCTAssertEqual(withSpotting.typicalCycleLengthDays, clean.typicalCycleLengthDays)
+    }
+
+    func testSpottingAloneNeverStartsACycle() {
+        // No period anywhere — a logged spotting day must not be read as one.
+        let spotting = CycleDayRecord(date: day(0), temperature: 36.0, isPeriod: false, isDisturbed: false, isSpotting: true)
+        XCTAssertTrue(CycleAnalyzer.periodStarts(days: [spotting], calendar: calendar).isEmpty)
+        XCTAssertNil(CycleAnalyzer.analyze(
+            days: [spotting], goal: .understand, today: day(1), calendar: calendar
+        ))
     }
 
     // MARK: - Thermal shift detection

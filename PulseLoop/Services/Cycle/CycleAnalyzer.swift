@@ -9,6 +9,9 @@ struct CycleDayRecord: Equatable {
     var temperature: Double?  // nightly BBT °C, nil = no usable night
     var isPeriod: Bool
     var isDisturbed: Bool
+    /// A light-bleeding day the user logged as spotting — never a period day for any purpose:
+    /// it starts no cycle, extends no flow, and enters no flow-length statistics.
+    var isSpotting: Bool = false
 
     /// A day whose temperature may participate in the thermal-shift analysis.
     var isValidTemperature: Bool { temperature != nil && !isDisturbed }
@@ -221,6 +224,8 @@ enum CycleAnalyzer {
 
     /// Derived day-1s: a period day counts as a new cycle start when the previous period day
     /// is more than 3 days earlier (so a spotting gap inside one period doesn't split it).
+    /// Spotting days themselves take no part — only `isPeriod` records are read here, and a
+    /// logged spotting day is never a period day.
     static func periodStarts(days: [CycleDayRecord], calendar: Calendar = .current) -> [Date] {
         var starts: [Date] = []
         var previousPeriodDay: Date?
