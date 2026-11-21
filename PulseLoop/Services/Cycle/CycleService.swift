@@ -22,6 +22,9 @@ struct CycleOverview: Equatable {
     /// Days the user flagged (or confirmed) in any way, keyed by `CycleDay.key(for:)` —
     /// lets the calendar mark period/disturbed days without refetching.
     var loggedDays: [String: CycleDayFacts]
+    /// What the numbers are worth: coverage quality, milestones, the honest range. Derived
+    /// from the same records + analysis in one pass, off the render path.
+    var accuracy: CycleAccuracy?
 
     struct CycleDayFacts: Equatable {
         var isPeriod: Bool
@@ -60,7 +63,7 @@ enum CycleService {
         }
 
         guard let firstPeriod = logged.first(where: \.isPeriod)?.date else {
-            return CycleOverview(analysis: nil, chartDays: [], loggedDays: loggedFacts)
+            return CycleOverview(analysis: nil, chartDays: [], loggedDays: loggedFacts, accuracy: nil)
         }
 
         let horizon = calendar.date(byAdding: .day, value: -maxHistoryDays, to: today) ?? today
@@ -101,7 +104,12 @@ enum CycleService {
             chartDays = []
         }
 
-        return CycleOverview(analysis: analysis, chartDays: chartDays, loggedDays: loggedFacts)
+        // One accuracy pass off the render path, from the *unstripped* records: under hormonal
+        // contraception the night coverage is what the user still controls, so it stays visible
+        // while the fertility content hides at the render layer.
+        let accuracy = CycleAccuracyEngine.evaluate(days: records, analysis: analysis, today: today, calendar: calendar)
+
+        return CycleOverview(analysis: analysis, chartDays: chartDays, loggedDays: loggedFacts, accuracy: accuracy)
     }
 
     /// Chart/calendar data for an arbitrary past cycle (index into `analysis.completedCycles`).

@@ -104,4 +104,57 @@ enum CycleCopy {
                 + "shift is confirmed or a new period is logged."
         }
     }
+
+    // MARK: - Accuracy card
+
+    /// Night-coverage sentence for the accuracy card. Every tier names the same
+    /// user-controllable lever — wearing the ring nightly — because that is what moves it.
+    static func coverageSentence(_ accuracy: CycleAccuracy) -> String {
+        switch accuracy.quality {
+        case .good:
+            return "Good coverage — \(accuracy.usableNights) of \(accuracy.totalNights) nights captured. "
+                + "Keep wearing the ring nightly."
+        case .fair:
+            return "Fair coverage — \(accuracy.usableNights) of \(accuracy.totalNights) nights captured. "
+                + "Wearing the ring nightly sharpens the estimates."
+        case .sparse:
+            return "Sparse data — \(accuracy.usableNights) of \(accuracy.totalNights) nights captured. "
+                + "Wearing the ring nightly is what fixes this."
+        case .noData:
+            return "Not enough nights yet — under 5 nights since your period started. "
+                + "Wearing the ring nightly builds the picture."
+        }
+    }
+
+    /// Where the user stands on the cycles-logged ladder. Says only what is already true:
+    /// during the first cycle the calendar predictions have not appeared yet.
+    static func milestoneSentence(_ accuracy: CycleAccuracy) -> String {
+        switch accuracy.cyclesLogged {
+        case 1:
+            return "First cycle underway — calendar predictions appear once it's logged."
+        case 2:
+            return "Personal statistics arrive at cycle 3 — one more cycle to go."
+        case 3..<6:
+            let remaining = 6 - accuracy.cyclesLogged
+            return "Personal statistics are live — full recent history joins at cycle 6 (\(remaining) more to go)."
+        default:
+            return "Full history unlocked — predictions now draw on your most recent cycles."
+        }
+    }
+
+    /// Only earned when the recent lengths actually vary; `nil` keeps the card quiet otherwise.
+    static func irregularitySentence(_ accuracy: CycleAccuracy) -> String? {
+        guard accuracy.irregularCycleLengths else { return nil }
+        return "Cycle lengths vary by more than 4 days, so ranges are drawn wider — the estimates stay, honestly uncertain."
+    }
+
+    /// The stated accuracy, reading the same half-width the drawn band uses. `nil` when there
+    /// is no prediction to qualify yet.
+    static func rangeSentence(_ accuracy: CycleAccuracy) -> String? {
+        guard let rangeDays = accuracy.periodRangeDays else { return nil }
+        if accuracy.ovulationConfirmed {
+            return "Ovulation is temperature-confirmed — the period window is tight: ±\(rangeDays) days."
+        }
+        return "Estimated from your statistics — the period can start within ±\(rangeDays) days of the date shown."
+    }
 }
