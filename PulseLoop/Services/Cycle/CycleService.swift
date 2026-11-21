@@ -27,6 +27,7 @@ struct CycleOverview: Equatable {
         var isPeriod: Bool
         var isDisturbed: Bool
         var hasNote: Bool
+        var isSpotting: Bool = false
     }
 }
 
@@ -55,7 +56,8 @@ enum CycleService {
             loggedFacts[day.dateString] = CycleOverview.CycleDayFacts(
                 isPeriod: day.isPeriod,
                 isDisturbed: day.isDisturbed,
-                hasNote: !(day.notes?.isEmpty ?? true)
+                hasNote: !(day.notes?.isEmpty ?? true),
+                isSpotting: day.isSpotting
             )
         }
 
@@ -77,7 +79,8 @@ enum CycleService {
                 date: day,
                 temperature: night.celsius,
                 isPeriod: facts?.isPeriod ?? false,
-                isDisturbed: facts?.isDisturbed ?? false
+                isDisturbed: facts?.isDisturbed ?? false,
+                isSpotting: facts?.isSpotting ?? false
             )
         }
 
@@ -87,7 +90,10 @@ enum CycleService {
         let analysis: CycleAnalysis?
         if settings.onHormonalContraception {
             analysis = CycleAnalyzer.analyze(
-                days: records.map { CycleDayRecord(date: $0.date, temperature: nil, isPeriod: $0.isPeriod, isDisturbed: $0.isDisturbed) },
+                days: records.map {
+                    CycleDayRecord(date: $0.date, temperature: nil, isPeriod: $0.isPeriod,
+                                   isDisturbed: $0.isDisturbed, isSpotting: $0.isSpotting)
+                },
                 goal: settings.goal, today: today, calendar: calendar
             )
         } else {
@@ -117,7 +123,8 @@ enum CycleService {
                 date: day,
                 temperature: night.celsius,
                 isPeriod: facts?.isPeriod ?? false,
-                isDisturbed: facts?.isDisturbed ?? false
+                isDisturbed: facts?.isDisturbed ?? false,
+                isSpotting: facts?.isSpotting ?? false
             )
         }
         return makeChartDays(from: records)

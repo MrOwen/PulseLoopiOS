@@ -148,37 +148,50 @@ final class DataArchiveTests: XCTestCase {
             notes: "Fever 38.5 °C — night excluded"
         )
         let noted = CycleDay(date: TestSupport.day(-1), notes: "Spotting")
+        let spotting = CycleDay(date: TestSupport.day(-8), isSpotting: true)
         // Simulate a row logged in a timezone 9h ahead: its stored `date` is that zone's midnight,
         // not the local one, while `dateString` is the key computed there. The importer must
         // restore both verbatim — re-deriving them through the init would file the night under
         // the previous day here.
         disturbed.date = disturbed.date.addingTimeInterval(-9 * 3600)
+        // The spotting row gets the same treatment, from a zone 14h ahead (their midnight is
+        // local 10:00 of the previous day — the other side of the date line).
+        spotting.date = spotting.date.addingTimeInterval(-14 * 3600)
         context.insert(period)
         context.insert(disturbed)
         context.insert(noted)
+        context.insert(spotting)
         try context.save()
         let periodKey = period.dateString
         let notedKey = noted.dateString
         let disturbedKey = disturbed.dateString
+        let spottingKey = spotting.dateString
         let disturbedDate = disturbed.date
+        let spottingDate = spotting.date
         let disturbedUpdatedAt = disturbed.updatedAt
         XCTAssertNotEqual(
             disturbedKey, CycleDay.key(for: Calendar.current.startOfDay(for: disturbedDate)),
             "fixture must diverge the stored key from what the init would re-derive"
         )
+        XCTAssertNotEqual(
+            spottingKey, CycleDay.key(for: Calendar.current.startOfDay(for: spottingDate)),
+            "fixture must diverge the stored key from what the init would re-derive"
+        )
 
         func assertRestored(file: StaticString = #filePath, line: UInt = #line) throws {
-            XCTAssertEqual(count(CycleDay.self, context), 3, file: file, line: line)
+            XCTAssertEqual(count(CycleDay.self, context), 4, file: file, line: line)
 
             let restoredPeriod = try XCTUnwrap(try fetchCycleDay(periodKey, context), file: file, line: line)
             XCTAssertTrue(restoredPeriod.isPeriod, file: file, line: line)
             XCTAssertFalse(restoredPeriod.isDisturbed, file: file, line: line)
+            XCTAssertFalse(restoredPeriod.isSpotting, file: file, line: line)
             XCTAssertNil(restoredPeriod.notes, file: file, line: line)
 
             let restoredDisturbed = try XCTUnwrap(try fetchCycleDay(disturbedKey, context), file: file, line: line)
             XCTAssertFalse(restoredDisturbed.isPeriod, file: file, line: line)
             XCTAssertTrue(restoredDisturbed.isDisturbed, file: file, line: line)
             XCTAssertTrue(restoredDisturbed.disturbedAutoDetected, file: file, line: line)
+            XCTAssertFalse(restoredDisturbed.isSpotting, file: file, line: line)
             XCTAssertEqual(restoredDisturbed.notes, "Fever 38.5 °C — night excluded", file: file, line: line)
             XCTAssertEqual(
                 restoredDisturbed.date.timeIntervalSince1970, disturbedDate.timeIntervalSince1970, accuracy: 0.005,
@@ -193,6 +206,15 @@ final class DataArchiveTests: XCTestCase {
             XCTAssertEqual(restoredNoted.notes, "Spotting", file: file, line: line)
             XCTAssertFalse(restoredNoted.isPeriod, file: file, line: line)
             XCTAssertFalse(restoredNoted.isDisturbed, file: file, line: line)
+
+            let restoredSpotting = try XCTUnwrap(try fetchCycleDay(spottingKey, context), file: file, line: line)
+            XCTAssertTrue(restoredSpotting.isSpotting, file: file, line: line)
+            XCTAssertFalse(restoredSpotting.isPeriod, file: file, line: line)
+            XCTAssertFalse(restoredSpotting.isDisturbed, file: file, line: line)
+            XCTAssertEqual(
+                restoredSpotting.date.timeIntervalSince1970, spottingDate.timeIntervalSince1970, accuracy: 0.005,
+                "stored date must be restored, not re-normalized to the local startOfDay", file: file, line: line
+            )
         }
 
         let defaults = makeSuiteDefaults(#function)
@@ -237,6 +259,38 @@ final class DataArchiveTests: XCTestCase {
             legacy, context: context, defaults: defaults, attachmentsDirectory: try makeTempDirectory(), refreshStores: false
         )
         XCTAssertEqual(count(CycleDay.self, context), 0, "replace-all import must not keep rows the file doesn't carry")
+    }
+
+    /// `isSpotting` joined the archive after cycle days shipped: rows written before it keep no
+    /// such key, and the importer must decode them (spotting defaults to false) instead of
+    /// rejecting the whole file.
+    func testLegacyCycleDayRowsWithoutSpottingFieldStillDecode() async throws {
+        let context = try TestSupport.makeContext()
+        context.insert(CycleDay(date: TestSupport.day(-5), isPeriod: true))
+        try context.save()
+
+        let defaults = makeSuiteDefaults(#function)
+        let exported = try await DataArchiveService.exportArchive(
+            context: context, defaults: defaults, attachmentsDirectory: try makeTempDirectory()
+        )
+        var json = try XCTUnwrap(try JSONSerialization.jsonObject(with: exported) as? [String: Any])
+        var cycleDays = try XCTUnwrap(json["cycleDays"] as? [[String: Any]])
+        XCTAssertFalse(cycleDays.isEmpty)
+        for index in cycleDays.indices {
+            XCTAssertNotNil(cycleDays[index].removeValue(forKey: "isSpotting"),
+                            "export must always write the isSpotting key")
+        }
+        json["cycleDays"] = cycleDays
+        let legacy = try JSONSerialization.data(withJSONObject: json)
+
+        let target = try TestSupport.makeContext()
+        try await DataArchiveService.importArchive(
+            legacy, context: target, defaults: defaults, attachmentsDirectory: try makeTempDirectory(), refreshStores: false
+        )
+        XCTAssertEqual(count(CycleDay.self, target), 1)
+        let restored = try XCTUnwrap(try target.fetch(FetchDescriptor<CycleDay>()).first)
+        XCTAssertTrue(restored.isPeriod)
+        XCTAssertFalse(restored.isSpotting, "a legacy row decodes as a non-spotting day")
     }
 
     // MARK: - Wipe completeness
