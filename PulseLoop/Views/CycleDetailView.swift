@@ -513,10 +513,7 @@ struct CycleDetailView: View {
     }
 
     private func logPeriod(on date: Date) {
-        let day = CycleRepository.dayOrNew(for: date, context: modelContext)
-        day.isPeriod = true
-        CycleRepository.save(day, context: modelContext)
-        CycleNotificationCenter.shared.scheduleNext()
+        CycleRepository.logPeriodDay(on: date, context: modelContext)
         reload()
     }
 

@@ -99,10 +99,7 @@ final class CycleNotificationCenter {
     /// the app never needs to open.
     func handleAction(identifier: String) {
         guard identifier == Self.actionStarted, let context = contextProvider?() else { return }
-        let day = CycleRepository.dayOrNew(for: Date(), context: context)
-        day.isPeriod = true
-        CycleRepository.save(day, context: context)
-        scheduleNext()
+        CycleRepository.logPeriodDay(on: Date(), context: context)
     }
 
     // MARK: - The scheduling decision (pure)
