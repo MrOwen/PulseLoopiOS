@@ -57,6 +57,14 @@ struct CycleDetailView: View {
                 StatusCopy(title: "Heads-up", body: message)
             }
             statusCard(analysis)
+            if let accuracy = overview.accuracy {
+                accuracyCard(accuracy)
+            }
+            if let note = CycleCopy.calibrationNote(analysis) {
+                Text(note)
+                    .font(.system(size: 11))
+                    .foregroundStyle(PulseColors.textMuted)
+            }
             if CycleCopy.shouldOfferPeriodStart(analysis) {
                 PeriodStartButton { logPeriod(on: Date()) }
             }
@@ -133,6 +141,57 @@ struct CycleDetailView: View {
         HStack(spacing: 4) {
             Circle().fill(color).frame(width: 6, height: 6)
             Text(label)
+        }
+    }
+
+    // MARK: - Accuracy
+
+    /// What the numbers are worth: coverage quality, the honest period range, the irregularity
+    /// note, the milestone ladder. A thin render of engine data (`CycleAccuracy`) plus
+    /// copy-module sentences — every decision lives in `CycleAccuracyEngine` / `CycleCopy`.
+    /// Under hormonal contraception the coverage stays visible (the ring still collects nights)
+    /// while the fertility-side sentences hide.
+    private func accuracyCard(_ accuracy: CycleAccuracy) -> some View {
+        PulseCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("How good is this data?")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(PulseColors.textPrimary)
+                    Spacer()
+                    Text(accuracy.quality.label)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(qualityColor(accuracy.quality))
+                }
+                Text(CycleCopy.coverageSentence(accuracy))
+                    .font(.system(size: 13))
+                    .foregroundStyle(PulseColors.textSecondary)
+                if !hormonal {
+                    if let range = CycleCopy.rangeSentence(accuracy) {
+                        Text(range)
+                            .font(.system(size: 13))
+                            .foregroundStyle(PulseColors.textSecondary)
+                    }
+                    if let irregular = CycleCopy.irregularitySentence(accuracy) {
+                        Text(irregular)
+                            .font(.system(size: 13))
+                            .foregroundStyle(PulseColors.warning)
+                    }
+                }
+                Text(CycleCopy.milestoneSentence(accuracy))
+                    .font(.system(size: 11))
+                    .foregroundStyle(PulseColors.textMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func qualityColor(_ quality: CycleAccuracy.Quality) -> Color {
+        switch quality {
+        case .good: return PulseColors.success
+        case .fair: return PulseColors.info
+        case .sparse: return PulseColors.warning
+        case .noData: return PulseColors.textMuted
         }
     }
 

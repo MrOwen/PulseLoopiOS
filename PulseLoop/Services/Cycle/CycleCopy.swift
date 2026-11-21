@@ -55,10 +55,10 @@ enum CycleCopy {
             : "Day \(analysis.dayNumber) · \(phaseLabel(analysis, hormonal: false, today: today, calendar: calendar))"
     }
 
-    /// The phase word for the ring center and the subtitle. Sensiplan closes the fertile window
-    /// on the *evening* of the confirming high day, so on that day "ovulation confirmed" and
-    /// "fertile window" are both true — name the hinge instead of letting the two read as a
-    /// contradiction.
+    /// The phase word for the ring center and the subtitle. The thermal-shift rule (3-over-6)
+    /// closes the fertile window on the *evening* of the confirming high day, so on that day
+    /// "ovulation confirmed" and "fertile window" are both true — name the hinge instead of
+    /// letting the two read as a contradiction.
     static func phaseLabel(
         _ analysis: CycleAnalysis,
         hormonal: Bool,
@@ -103,5 +103,67 @@ enum CycleCopy {
             return "This cycle is running unusually long. Period estimates are on hold until a temperature "
                 + "shift is confirmed or a new period is logged."
         }
+    }
+
+    // MARK: - Accuracy card
+
+    /// Night-coverage sentence for the accuracy card. Every tier names the same
+    /// user-controllable lever — wearing the ring nightly — because that is what moves it.
+    static func coverageSentence(_ accuracy: CycleAccuracy) -> String {
+        switch accuracy.quality {
+        case .good:
+            return "Good coverage — \(accuracy.usableNights) of \(accuracy.totalNights) nights captured. "
+                + "Keep wearing the ring nightly."
+        case .fair:
+            return "Fair coverage — \(accuracy.usableNights) of \(accuracy.totalNights) nights captured. "
+                + "Wearing the ring nightly sharpens the estimates."
+        case .sparse:
+            return "Sparse data — \(accuracy.usableNights) of \(accuracy.totalNights) nights captured. "
+                + "Wearing the ring nightly is what fixes this."
+        case .noData:
+            return "Not enough nights yet — under 5 nights since your period started. "
+                + "Wearing the ring nightly builds the picture."
+        }
+    }
+
+    /// Where the user stands on the cycles-logged ladder. Says only what is already true:
+    /// during the first cycle the calendar predictions have not appeared yet.
+    static func milestoneSentence(_ accuracy: CycleAccuracy) -> String {
+        switch accuracy.cyclesLogged {
+        case 1:
+            return "First cycle underway — calendar predictions appear once it's logged."
+        case 2:
+            return "Personal statistics arrive at cycle 3 — one more cycle to go."
+        case 3..<6:
+            let remaining = 6 - accuracy.cyclesLogged
+            return "Personal statistics are live — full recent history joins at cycle 6 (\(remaining) more to go)."
+        default:
+            return "Full history unlocked — predictions now draw on your most recent cycles."
+        }
+    }
+
+    /// Only earned when the recent lengths actually vary; `nil` keeps the card quiet otherwise.
+    static func irregularitySentence(_ accuracy: CycleAccuracy) -> String? {
+        guard accuracy.irregularCycleLengths else { return nil }
+        return "Cycle lengths vary by more than 4 days, so ranges are drawn wider — the estimates stay, honestly uncertain."
+    }
+
+    /// The stated accuracy, reading the same half-width the drawn band uses. `nil` when there
+    /// is no prediction to qualify yet.
+    static func rangeSentence(_ accuracy: CycleAccuracy) -> String? {
+        guard let rangeDays = accuracy.periodRangeDays else { return nil }
+        if accuracy.ovulationConfirmed {
+            return "Ovulation is temperature-confirmed — the period window is tight: ±\(rangeDays) days."
+        }
+        return "Estimated from your statistics — the period can start within ±\(rangeDays) days of the date shown."
+    }
+
+    /// The accuracy note on the detail screen: once calibration is in force, say so in one
+    /// sentence — the app learns the user's personal rise instead of applying a population
+    /// constant. Jargon-free, and it promises nothing beyond the learning itself.
+    static func calibrationNote(_ analysis: CycleAnalysis) -> String? {
+        guard analysis.calibratedRisingDelta != nil else { return nil }
+        return "After a couple of cycles, the app learns your personal temperature rise "
+            + "and uses it when confirming ovulation."
     }
 }

@@ -37,8 +37,9 @@ enum CycleGoal: String, Codable, CaseIterable, Identifiable {
 }
 
 /// Tunable knobs of the detection. Defaults reflect *skin* temperature from a finger ring:
-/// damped and noisier than the oral BBT the clinical Sensiplan rules were written for, so
-/// the rise threshold is an engineering parameter — explicitly not the clinical 0.2 °C.
+/// damped and noisier than the oral BBT the classical thermal-shift rule (3-over-6) was
+/// written for, so the rise threshold is an engineering parameter — explicitly not the
+/// clinical 0.2 °C.
 struct CycleAnalyzerConfig {
     /// Required excess of the confirming high over the coverline (on smoothed values).
     var risingDelta: Double = 0.15
@@ -48,9 +49,14 @@ struct CycleAnalyzerConfig {
     var minimumCycleDay: Int = 5
     /// Nightly temperature this far above the recent baseline suggests fever/disturbance.
     var disturbanceExcess: Double = 0.5
-    /// Luteal-phase length bounds used when deriving the personal median.
-    var lutealRange: ClosedRange<Int> = 10...16
+    /// Luteal-phase length bounds used when deriving the personal median — the published
+    /// 95 % spread, so users whose phase truly runs short or long keep their own number.
+    var lutealRange: ClosedRange<Int> = 9...17
     var defaultLutealDays: Int = 14
+    /// Bounds for the *calibrated* rise threshold: the user's own observed
+    /// follicular-to-luteal delta is clamped into this range before it may replace the
+    /// `risingDelta` default.
+    var risingDeltaRange: ClosedRange<Double> = 0.10...0.25
     /// `avoid` goal: widen the displayed fertile window by this many days on each side.
     var conservativeOpenLeadDays: Int = 2
     var conservativeCloseLagDays: Int = 1
@@ -125,6 +131,10 @@ struct CycleAnalysis: Equatable {
     var dayNumber: Int                       // 1-based, for `today`
     var phase: CyclePhase
     var coverline: Double?
+    /// The rise threshold calibration put in force, when it did: non-nil only once at least
+    /// two completed cycles qualified. Presentation — the detail screen can say the app has
+    /// learned the user's personal rise.
+    var calibratedRisingDelta: Double?
     var ovulation: OvulationStatus
     var fertileWindow: ClosedRange<Date>?
     var nextPeriod: PeriodPrediction?
@@ -153,8 +163,17 @@ struct CycleAnalysis: Equatable {
 
 // MARK: - Analyzer
 
-/// Pure, deterministic cycle analysis: Sensiplan's 3-over-6 mechanics (with both classical
-/// exceptions) applied to *baseline-relative smoothed skin temperature*, plus next-period /
+/// Half-width, in days, of the honest next-period range once ovulation is temperature-confirmed.
+/// Single shared source of truth: the drawn prediction band (`earliest`/`latest` below) and the
+/// accuracy copy (`CycleAccuracy.periodRangeDays`) both read this constant, so the drawn band
+/// and the stated accuracy can never disagree. The old ±1 was tighter than the method honestly
+/// supports; ±2 is the audited value.
+extension CycleAnalyzer {
+    static let confirmedSpreadDays = 2
+}
+
+/// Pure, deterministic cycle analysis: the thermal-shift rule (3-over-6) with both classical
+/// exceptions applied to *baseline-relative smoothed skin temperature*, plus next-period /
 /// fertile-window estimation from personal history. No I/O, no clock reads, no globals —
 /// everything comes in through the arguments so the whole thing is trivially unit-testable.
 enum CycleAnalyzer {
@@ -175,16 +194,28 @@ enum CycleAnalyzer {
 
         // History: each pair of consecutive starts closes a cycle; detect its shift for luteal stats.
         var completed: [CompletedCycleSummary] = []
+        var observedDeltas: [Double] = []
         for (start, next) in zip(starts, starts.dropFirst()) {
             let length = daysBetween(start, next, calendar: calendar)
             let cycleRecords = records(days, from: start, before: next)
             let shift = detectShift(in: cycleRecords, cycleStart: start, calendar: calendar, config: config)
             let ovulationIndex = shift?.status.estimatedDate.map { daysBetween(start, $0, calendar: calendar) }
             completed.append(CompletedCycleSummary(start: start, lengthDays: length, ovulationDayIndex: ovulationIndex))
+            if let delta = observedRisingDelta(in: cycleRecords, cycleStart: start, calendar: calendar) {
+                observedDeltas.append(delta)
+            }
         }
 
+        // Calibration: once at least two completed cycles qualify, the bar this cycle's rule
+        // must clear is the user's own median amplitude (clamped) instead of the population
+        // default. History above keeps the default threshold — the calibration source stays
+        // fixed, so the estimate never feeds back into the data it was learned from.
+        let calibratedDelta = calibratedRisingDelta(from: observedDeltas, config: config)
+        var currentConfig = config
+        currentConfig.risingDelta = calibratedDelta
+
         let currentRecords = records(days, from: currentStart, before: calendar.date(byAdding: .day, value: 1, to: today) ?? today)
-        let shift = detectShift(in: currentRecords, cycleStart: currentStart, calendar: calendar, config: config)
+        let shift = detectShift(in: currentRecords, cycleStart: currentStart, calendar: calendar, config: currentConfig)
         let dayNumber = daysBetween(currentStart, today, calendar: calendar) + 1
 
         let luteal = lutealLength(completed: completed, config: config)
@@ -207,6 +238,7 @@ enum CycleAnalyzer {
             dayNumber: dayNumber,
             phase: phase,
             coverline: shift?.coverline,
+            calibratedRisingDelta: observedDeltas.count >= 2 ? calibratedDelta : nil,
             ovulation: shift?.status ?? .notDetected,
             fertileWindow: window,
             nextPeriod: prediction,
@@ -244,7 +276,7 @@ enum CycleAnalyzer {
         days.filter { $0.date >= start && $0.date < end }
     }
 
-    // MARK: Thermal shift (Sensiplan 3-over-6 mechanics on smoothed values)
+    // MARK: Thermal shift (3-over-6 on smoothed values)
 
     struct ShiftResult: Equatable {
         var coverline: Double
@@ -278,7 +310,7 @@ enum CycleAnalyzer {
             guard smoothed[candidate] > coverline else { continue }
 
             // The smoothing that tames the ring's quantization also lags: the first *raw* value
-            // above the line usually precedes the first smoothed one by a day. Sensiplan's "first
+            // above the line usually precedes the first smoothed one by a day. The rule's "first
             // higher measurement" is that raw value, and ovulation is dated from it (Heidelberg
             // NFP group: on average 0.9 days before it, 81 % within 0–2 days) — so walk back over
             // the raw run above the line, at most the smoothing window. Confirmation stays on the
@@ -357,6 +389,39 @@ enum CycleAnalyzer {
         }
     }
 
+    // MARK: Personal rise calibration
+
+    /// The rise threshold in force: the median of the user's observed follicular-to-luteal
+    /// deltas, clamped to `risingDeltaRange`, once at least two completed cycles qualify —
+    /// the `risingDelta` default before that. The rule's structure is untouched; this only
+    /// sets the bar the confirming high must clear.
+    static func calibratedRisingDelta(from observations: [Double], config: CycleAnalyzerConfig = CycleAnalyzerConfig()) -> Double {
+        guard observations.count >= 2 else { return config.risingDelta }
+        let median = CycleBBTService.median(observations)
+        return min(max(median, config.risingDeltaRange.lowerBound), config.risingDeltaRange.upperBound)
+    }
+
+    /// One cycle's follicular-to-luteal amplitude, read off the smoothed series: the median
+    /// of the luteal run (from the rule's first raw high onward) minus the median of the
+    /// follicular values before it. Confirmed shifts only — a `probable` end-of-cycle rise
+    /// has too short a luteal run to measure. Detection itself is unchanged; this reuses the
+    /// same rule result as data, so it stays deterministic and cheap.
+    static func observedRisingDelta(
+        in cycleRecords: [CycleDayRecord],
+        cycleStart: Date,
+        calendar: Calendar = .current,
+        config: CycleAnalyzerConfig = CycleAnalyzerConfig()
+    ) -> Double? {
+        guard let shift = detectShift(in: cycleRecords, cycleStart: cycleStart, calendar: calendar, config: config),
+              case .confirmed = shift.status else { return nil }
+        let valid = cycleRecords.filter(\.isValidTemperature)
+        let smoothed = smoothedValues(valid)
+        guard let firstHighIndex = valid.firstIndex(where: { $0.date == shift.firstHighDay }),
+              firstHighIndex >= 3, smoothed.count - firstHighIndex >= 3 else { return nil }
+        return CycleBBTService.median(Array(smoothed[firstHighIndex...]))
+            - CycleBBTService.median(Array(smoothed[..<firstHighIndex]))
+    }
+
     // MARK: Personal statistics
 
     private static func lutealLength(completed: [CompletedCycleSummary], config: CycleAnalyzerConfig) -> Int {
@@ -382,9 +447,11 @@ enum CycleAnalyzer {
         calendar: Calendar
     ) -> PeriodPrediction? {
         // Confirmed ovulation pins the prediction: luteal length is the stable half of a cycle.
+        // The spread is the shared confirmed constant — the drawn band and the accuracy copy
+        // read the same number, so they cannot disagree.
         if case let .confirmed(estimated, _) = ovulation,
            let expected = calendar.date(byAdding: .day, value: lutealDays, to: estimated) {
-            return prediction(around: expected, spreadDays: 1, calendar: calendar)
+            return prediction(around: expected, spreadDays: confirmedSpreadDays, calendar: calendar)
         }
         // Otherwise fall back to cycle-length statistics; cycle 1 stays honestly silent.
         guard let typicalLength = typicalCycleLength(completed: completed),
@@ -419,7 +486,7 @@ enum CycleAnalyzer {
         config: CycleAnalyzerConfig
     ) -> ClosedRange<Date>? {
         // Opening, most personal rule available first:
-        //  - Sensiplan minus-8: earliest first-high cycle day across past cycles − 8;
+        //  - minus-8 rule: earliest first-high cycle day across past cycles − 8;
         //  - Döring fallback: shortest cycle length − 20;
         //  - no history: day 6.
         // Never earlier than day 6 (period + the first infertile days), except in `avoid`.
@@ -438,7 +505,7 @@ enum CycleAnalyzer {
         var close: Date?
         switch ovulation {
         case let .confirmed(_, confirmedOn):
-            // Sensiplan closes the fertile window on the evening of the confirming high day.
+            // The rule closes the fertile window on the evening of the confirming high day.
             close = confirmedOn
         case let .probable(estimated):
             close = calendar.date(byAdding: .day, value: 1, to: estimated)
