@@ -155,6 +155,15 @@ struct CycleAnalysis: Equatable {
 
 // MARK: - Analyzer
 
+/// Half-width, in days, of the honest next-period range once ovulation is temperature-confirmed.
+/// Single shared source of truth: the drawn prediction band (`earliest`/`latest` below) and the
+/// accuracy copy (`CycleAccuracy.periodRangeDays`) both read this constant, so the drawn band
+/// and the stated accuracy can never disagree. The old ±1 was tighter than the method honestly
+/// supports; ±2 is the audited value.
+extension CycleAnalyzer {
+    static let confirmedSpreadDays = 2
+}
+
 /// Pure, deterministic cycle analysis: the thermal-shift rule (3-over-6) with both classical
 /// exceptions applied to *baseline-relative smoothed skin temperature*, plus next-period /
 /// fertile-window estimation from personal history. No I/O, no clock reads, no globals —
@@ -384,9 +393,11 @@ enum CycleAnalyzer {
         calendar: Calendar
     ) -> PeriodPrediction? {
         // Confirmed ovulation pins the prediction: luteal length is the stable half of a cycle.
+        // The spread is the shared confirmed constant — the drawn band and the accuracy copy
+        // read the same number, so they cannot disagree.
         if case let .confirmed(estimated, _) = ovulation,
            let expected = calendar.date(byAdding: .day, value: lutealDays, to: estimated) {
-            return prediction(around: expected, spreadDays: 1, calendar: calendar)
+            return prediction(around: expected, spreadDays: confirmedSpreadDays, calendar: calendar)
         }
         // Otherwise fall back to cycle-length statistics; cycle 1 stays honestly silent.
         guard let typicalLength = typicalCycleLength(completed: completed),
