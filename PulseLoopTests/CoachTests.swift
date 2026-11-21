@@ -6,7 +6,7 @@ import XCTest
 // MARK: - Stubs
 
 /// In-memory ResponsesClient that replays a scripted queue of responses.
-actor StubResponsesClient: ResponsesClient {
+@MainActor final class StubResponsesClient: ResponsesClient {
     private var queue: [OpenAIResponse]
     private(set) var sendCount = 0
     init(_ responses: [OpenAIResponse]) { self.queue = responses }

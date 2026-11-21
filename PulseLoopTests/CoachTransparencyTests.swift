@@ -8,7 +8,7 @@ import XCTest
 @MainActor
 final class CoachTransparencyTests: XCTestCase {
 
-    private actor FailingContinuationClient: ResponsesClient {
+    @MainActor final class FailingContinuationClient: ResponsesClient {
         private var sentInitial = false
         let first: OpenAIResponse
 
