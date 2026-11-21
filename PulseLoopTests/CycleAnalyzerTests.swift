@@ -544,6 +544,25 @@ final class CycleAnalyzerTests: XCTestCase {
         XCTAssertEqual(analysis.coverline, 36.0)
     }
 
+    /// The one education sentence appears only once calibration is actually in force.
+    func testCalibrationNoteNamesThePersonalizedRise() {
+        let learning = CycleAnalyzer.analyze(
+            days: smallRiseHistory(completedHighs: [36.13], currentHighs: 4),
+            goal: .understand, today: day(41), calendar: calendar
+        )!
+        XCTAssertNil(CycleCopy.calibrationNote(learning))
+
+        let learned = CycleAnalyzer.analyze(
+            days: smallRiseHistory(completedHighs: [36.10, 36.14], currentHighs: 4),
+            goal: .understand, today: day(69), calendar: calendar
+        )!
+        XCTAssertEqual(
+            CycleCopy.calibrationNote(learned),
+            "After a couple of cycles, the app learns your personal temperature rise "
+                + "and uses it when confirming ovulation."
+        )
+    }
+
     func testPeriodStartButtonOnlyNearPredictedDate() {
         var days: [CycleDayRecord] = []
         for offset in [0, 28] {

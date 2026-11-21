@@ -104,4 +104,13 @@ enum CycleCopy {
                 + "shift is confirmed or a new period is logged."
         }
     }
+
+    /// The accuracy note on the detail screen: once calibration is in force, say so in one
+    /// sentence — the app learns the user's personal rise instead of applying a population
+    /// constant. Jargon-free, and it promises nothing beyond the learning itself.
+    static func calibrationNote(_ analysis: CycleAnalysis) -> String? {
+        guard analysis.calibratedRisingDelta != nil else { return nil }
+        return "After a couple of cycles, the app learns your personal temperature rise "
+            + "and uses it when confirming ovulation."
+    }
 }
