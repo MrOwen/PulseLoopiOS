@@ -113,9 +113,6 @@ struct RootAppView: View {
                         path.append(AppRoute.recordSelect)
                     }
                 }
-                if UserDefaults.standard.bool(forKey: "openCycle") {
-                    path.append(AppRoute.cycleDetail)
-                }
                 // Re-attach to an in-progress workout left running across launches.
                 liveWorkout.recover()
                 routeDeepLinkIfNeeded()
