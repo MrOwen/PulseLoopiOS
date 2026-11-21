@@ -53,6 +53,10 @@ struct CycleAnalyzerConfig {
     /// 95 % spread, so users whose phase truly runs short or long keep their own number.
     var lutealRange: ClosedRange<Int> = 9...17
     var defaultLutealDays: Int = 14
+    /// Bounds for the *calibrated* rise threshold: the user's own observed
+    /// follicular-to-luteal delta is clamped into this range before it may replace the
+    /// `risingDelta` default.
+    var risingDeltaRange: ClosedRange<Double> = 0.10...0.25
     /// `avoid` goal: widen the displayed fertile window by this many days on each side.
     var conservativeOpenLeadDays: Int = 2
     var conservativeCloseLagDays: Int = 1
@@ -127,6 +131,10 @@ struct CycleAnalysis: Equatable {
     var dayNumber: Int                       // 1-based, for `today`
     var phase: CyclePhase
     var coverline: Double?
+    /// The rise threshold calibration put in force, when it did: non-nil only once at least
+    /// two completed cycles qualified. Presentation — the detail screen can say the app has
+    /// learned the user's personal rise.
+    var calibratedRisingDelta: Double?
     var ovulation: OvulationStatus
     var fertileWindow: ClosedRange<Date>?
     var nextPeriod: PeriodPrediction?
@@ -186,16 +194,28 @@ enum CycleAnalyzer {
 
         // History: each pair of consecutive starts closes a cycle; detect its shift for luteal stats.
         var completed: [CompletedCycleSummary] = []
+        var observedDeltas: [Double] = []
         for (start, next) in zip(starts, starts.dropFirst()) {
             let length = daysBetween(start, next, calendar: calendar)
             let cycleRecords = records(days, from: start, before: next)
             let shift = detectShift(in: cycleRecords, cycleStart: start, calendar: calendar, config: config)
             let ovulationIndex = shift?.status.estimatedDate.map { daysBetween(start, $0, calendar: calendar) }
             completed.append(CompletedCycleSummary(start: start, lengthDays: length, ovulationDayIndex: ovulationIndex))
+            if let delta = observedRisingDelta(in: cycleRecords, cycleStart: start, calendar: calendar) {
+                observedDeltas.append(delta)
+            }
         }
 
+        // Calibration: once at least two completed cycles qualify, the bar this cycle's rule
+        // must clear is the user's own median amplitude (clamped) instead of the population
+        // default. History above keeps the default threshold — the calibration source stays
+        // fixed, so the estimate never feeds back into the data it was learned from.
+        let calibratedDelta = calibratedRisingDelta(from: observedDeltas, config: config)
+        var currentConfig = config
+        currentConfig.risingDelta = calibratedDelta
+
         let currentRecords = records(days, from: currentStart, before: calendar.date(byAdding: .day, value: 1, to: today) ?? today)
-        let shift = detectShift(in: currentRecords, cycleStart: currentStart, calendar: calendar, config: config)
+        let shift = detectShift(in: currentRecords, cycleStart: currentStart, calendar: calendar, config: currentConfig)
         let dayNumber = daysBetween(currentStart, today, calendar: calendar) + 1
 
         let luteal = lutealLength(completed: completed, config: config)
@@ -218,6 +238,7 @@ enum CycleAnalyzer {
             dayNumber: dayNumber,
             phase: phase,
             coverline: shift?.coverline,
+            calibratedRisingDelta: observedDeltas.count >= 2 ? calibratedDelta : nil,
             ovulation: shift?.status ?? .notDetected,
             fertileWindow: window,
             nextPeriod: prediction,
@@ -366,6 +387,39 @@ enum CycleAnalyzer {
             let window = valid[max(0, index - 2)...index].compactMap(\.temperature)
             return CycleBBTService.median(window)
         }
+    }
+
+    // MARK: Personal rise calibration
+
+    /// The rise threshold in force: the median of the user's observed follicular-to-luteal
+    /// deltas, clamped to `risingDeltaRange`, once at least two completed cycles qualify —
+    /// the `risingDelta` default before that. The rule's structure is untouched; this only
+    /// sets the bar the confirming high must clear.
+    static func calibratedRisingDelta(from observations: [Double], config: CycleAnalyzerConfig = CycleAnalyzerConfig()) -> Double {
+        guard observations.count >= 2 else { return config.risingDelta }
+        let median = CycleBBTService.median(observations)
+        return min(max(median, config.risingDeltaRange.lowerBound), config.risingDeltaRange.upperBound)
+    }
+
+    /// One cycle's follicular-to-luteal amplitude, read off the smoothed series: the median
+    /// of the luteal run (from the rule's first raw high onward) minus the median of the
+    /// follicular values before it. Confirmed shifts only — a `probable` end-of-cycle rise
+    /// has too short a luteal run to measure. Detection itself is unchanged; this reuses the
+    /// same rule result as data, so it stays deterministic and cheap.
+    static func observedRisingDelta(
+        in cycleRecords: [CycleDayRecord],
+        cycleStart: Date,
+        calendar: Calendar = .current,
+        config: CycleAnalyzerConfig = CycleAnalyzerConfig()
+    ) -> Double? {
+        guard let shift = detectShift(in: cycleRecords, cycleStart: cycleStart, calendar: calendar, config: config),
+              case .confirmed = shift.status else { return nil }
+        let valid = cycleRecords.filter(\.isValidTemperature)
+        let smoothed = smoothedValues(valid)
+        guard let firstHighIndex = valid.firstIndex(where: { $0.date == shift.firstHighDay }),
+              firstHighIndex >= 3, smoothed.count - firstHighIndex >= 3 else { return nil }
+        return CycleBBTService.median(Array(smoothed[firstHighIndex...]))
+            - CycleBBTService.median(Array(smoothed[..<firstHighIndex]))
     }
 
     // MARK: Personal statistics

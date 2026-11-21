@@ -455,6 +455,114 @@ final class CycleAnalyzerTests: XCTestCase {
         XCTAssertEqual(CycleCopy.headline(analysis, hormonal: false, today: day(52), calendar: calendar), "Period in ~4 days")
     }
 
+    // MARK: - Personal rise calibration
+
+    /// A history of 28-day biphasic cycles with small rises (lows 36.0, one `high` value per
+    /// completed cycle — under the 0.15 default the rule confirms each only through the
+    /// weak-third exception), followed by an open current cycle rising 0.13 whose data ends
+    /// after `currentHighs` raised nights.
+    private func smallRiseHistory(completedHighs: [Double], currentHighs: Int) -> [CycleDayRecord] {
+        var days: [CycleDayRecord] = []
+        func appendCycle(high: Double, lengthDays: Int, lowCount: Int) {
+            let temps = Array(repeating: 36.0, count: lowCount)
+                + Array(repeating: high, count: lengthDays - lowCount)
+            for (index, temp) in temps.enumerated() {
+                days.append(CycleDayRecord(
+                    date: day(days.count),
+                    temperature: temp,
+                    isPeriod: index < 4,
+                    isDisturbed: false
+                ))
+            }
+        }
+        for high in completedHighs { appendCycle(high: high, lengthDays: 28, lowCount: 10) }
+        appendCycle(high: 36.13, lengthDays: 10 + currentHighs, lowCount: 10)
+        return days
+    }
+
+    func testCalibratedRiseIsTheClampedMedianOfObservedDeltas() {
+        let config = CycleAnalyzerConfig()
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.12, 0.16], config: config), 0.14, accuracy: 0.0001)
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.10, 0.12, 0.30], config: config), 0.12, accuracy: 0.0001)
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.05, 0.07], config: config), 0.10, accuracy: 0.0001)
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.30, 0.50], config: config), 0.25, accuracy: 0.0001)
+    }
+
+    func testCalibratedRiseFallsBackToTheDefaultBelowTwoObservations() {
+        let config = CycleAnalyzerConfig()
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.30], config: config), 0.15, accuracy: 0.0001)
+        XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [], config: config), 0.15, accuracy: 0.0001)
+    }
+
+    func testObservedDeltaIsTheLutealMinusFollicularMedian() throws {
+        // Textbook biphasic: 10 nights at 36.0, then 36.5 — amplitude 0.5.
+        let delta = try XCTUnwrap(CycleAnalyzer.observedRisingDelta(
+            in: records(temps: biphasicTemps()), cycleStart: day(0), calendar: calendar
+        ))
+        XCTAssertEqual(delta, 0.5, accuracy: 0.0001)
+    }
+
+    func testObservedDeltaNeedsAConfirmedShift() {
+        // Rise underway but unconfirmed (only 2 smoothed highs) — too short a luteal run to measure.
+        XCTAssertNil(CycleAnalyzer.observedRisingDelta(
+            in: records(temps: biphasicTemps(highDays: 3)), cycleStart: day(0), calendar: calendar
+        ))
+        // Flat cycle — nothing to measure.
+        XCTAssertNil(CycleAnalyzer.observedRisingDelta(
+            in: records(temps: Array(repeating: 36.0, count: 20)), cycleStart: day(0), calendar: calendar
+        ))
+    }
+
+    /// One completed cycle is not enough to calibrate: the analysis says so, and the small
+    /// rise in the open cycle stays unconfirmed under the 0.15 default.
+    func testFewerThanTwoQualifyingCyclesKeepTheDefaultRise() {
+        // One completed cycle (28 days) + a current cycle ending on its 3rd smoothed high.
+        let analysis = CycleAnalyzer.analyze(
+            days: smallRiseHistory(completedHighs: [36.13], currentHighs: 4),
+            goal: .understand, today: day(41), calendar: calendar
+        )!
+        XCTAssertNil(analysis.calibratedRisingDelta)
+        guard case .probable = analysis.ovulation else {
+            return XCTFail("expected probable under the default rise, got \(analysis.ovulation)")
+        }
+        XCTAssertEqual(analysis.coverline, 36.0)
+    }
+
+    /// The payoff: history amplitudes of 0.10 and 0.14 calibrate the bar to their median,
+    /// 0.12 — so the open cycle's 0.13 rise confirms, where the fixed 0.15 leaves it hanging.
+    func testCalibratedThresholdConfirmsAShiftTheDefaultMisses() throws {
+        let analysis = CycleAnalyzer.analyze(
+            days: smallRiseHistory(completedHighs: [36.10, 36.14], currentHighs: 4),
+            goal: .understand, today: day(69), calendar: calendar
+        )!
+        XCTAssertEqual(try XCTUnwrap(analysis.calibratedRisingDelta), 0.12, accuracy: 0.0001)
+        guard case let .confirmed(estimated, confirmedOn) = analysis.ovulation else {
+            return XCTFail("expected the personal bar to confirm the small rise, got \(analysis.ovulation)")
+        }
+        XCTAssertEqual(estimated, day(65))    // day before the first raw high (cycle day 11)
+        XCTAssertEqual(confirmedOn, day(69))  // the 3rd smoothed high (cycle day 14)
+        XCTAssertEqual(analysis.coverline, 36.0)
+    }
+
+    /// The one education sentence appears only once calibration is actually in force.
+    func testCalibrationNoteNamesThePersonalizedRise() {
+        let learning = CycleAnalyzer.analyze(
+            days: smallRiseHistory(completedHighs: [36.13], currentHighs: 4),
+            goal: .understand, today: day(41), calendar: calendar
+        )!
+        XCTAssertNil(CycleCopy.calibrationNote(learning))
+
+        let learned = CycleAnalyzer.analyze(
+            days: smallRiseHistory(completedHighs: [36.10, 36.14], currentHighs: 4),
+            goal: .understand, today: day(69), calendar: calendar
+        )!
+        XCTAssertEqual(
+            CycleCopy.calibrationNote(learned),
+            "After a couple of cycles, the app learns your personal temperature rise "
+                + "and uses it when confirming ovulation."
+        )
+    }
+
     func testPeriodStartButtonOnlyNearPredictedDate() {
         var days: [CycleDayRecord] = []
         for offset in [0, 28] {
