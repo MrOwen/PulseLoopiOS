@@ -457,6 +457,29 @@ final class CycleAnalyzerTests: XCTestCase {
 
     // MARK: - Personal rise calibration
 
+    /// A history of `completed` 28-day biphasic cycles with a small rise (lows 36.0, highs
+    /// 36.13 — under the 0.15 default the rule confirms each only through the weak-third
+    /// exception), followed by an open current cycle whose data ends after `currentHighs`
+    /// raised nights.
+    private func smallRiseHistory(completed: Int, currentHighs: Int) -> [CycleDayRecord] {
+        var days: [CycleDayRecord] = []
+        func appendCycle(lengthDays: Int, lowCount: Int) {
+            let temps = Array(repeating: 36.0, count: lowCount)
+                + Array(repeating: 36.13, count: lengthDays - lowCount)
+            for (index, temp) in temps.enumerated() {
+                days.append(CycleDayRecord(
+                    date: day(days.count),
+                    temperature: temp,
+                    isPeriod: index < 4,
+                    isDisturbed: false
+                ))
+            }
+        }
+        for _ in 0..<completed { appendCycle(lengthDays: 28, lowCount: 10) }
+        appendCycle(lengthDays: 10 + currentHighs, lowCount: 10)
+        return days
+    }
+
     func testCalibratedRiseIsTheClampedMedianOfObservedDeltas() {
         let config = CycleAnalyzerConfig()
         XCTAssertEqual(CycleAnalyzer.calibratedRisingDelta(from: [0.12, 0.16], config: config), 0.14, accuracy: 0.0001)
@@ -488,6 +511,21 @@ final class CycleAnalyzerTests: XCTestCase {
         XCTAssertNil(CycleAnalyzer.observedRisingDelta(
             in: records(temps: Array(repeating: 36.0, count: 20)), cycleStart: day(0), calendar: calendar
         ))
+    }
+
+    /// One completed cycle is not enough to calibrate: the analysis says so, and the small
+    /// rise in the open cycle stays unconfirmed under the 0.15 default.
+    func testFewerThanTwoQualifyingCyclesKeepTheDefaultRise() {
+        // One completed cycle (28 days) + a current cycle ending on its 3rd smoothed high.
+        let analysis = CycleAnalyzer.analyze(
+            days: smallRiseHistory(completed: 1, currentHighs: 4),
+            goal: .understand, today: day(41), calendar: calendar
+        )!
+        XCTAssertNil(analysis.calibratedRisingDelta)
+        guard case .probable = analysis.ovulation else {
+            return XCTFail("expected probable under the default rise, got \(analysis.ovulation)")
+        }
+        XCTAssertEqual(analysis.coverline, 36.0)
     }
 
     func testPeriodStartButtonOnlyNearPredictedDate() {

@@ -131,6 +131,10 @@ struct CycleAnalysis: Equatable {
     var dayNumber: Int                       // 1-based, for `today`
     var phase: CyclePhase
     var coverline: Double?
+    /// The rise threshold calibration put in force, when it did: non-nil only once at least
+    /// two completed cycles qualified. Presentation — the detail screen can say the app has
+    /// learned the user's personal rise.
+    var calibratedRisingDelta: Double?
     var ovulation: OvulationStatus
     var fertileWindow: ClosedRange<Date>?
     var nextPeriod: PeriodPrediction?
@@ -181,16 +185,28 @@ enum CycleAnalyzer {
 
         // History: each pair of consecutive starts closes a cycle; detect its shift for luteal stats.
         var completed: [CompletedCycleSummary] = []
+        var observedDeltas: [Double] = []
         for (start, next) in zip(starts, starts.dropFirst()) {
             let length = daysBetween(start, next, calendar: calendar)
             let cycleRecords = records(days, from: start, before: next)
             let shift = detectShift(in: cycleRecords, cycleStart: start, calendar: calendar, config: config)
             let ovulationIndex = shift?.status.estimatedDate.map { daysBetween(start, $0, calendar: calendar) }
             completed.append(CompletedCycleSummary(start: start, lengthDays: length, ovulationDayIndex: ovulationIndex))
+            if let delta = observedRisingDelta(in: cycleRecords, cycleStart: start, calendar: calendar) {
+                observedDeltas.append(delta)
+            }
         }
 
+        // Calibration: once at least two completed cycles qualify, the bar this cycle's rule
+        // must clear is the user's own median amplitude (clamped) instead of the population
+        // default. History above keeps the default threshold — the calibration source stays
+        // fixed, so the estimate never feeds back into the data it was learned from.
+        let calibratedDelta = calibratedRisingDelta(from: observedDeltas, config: config)
+        var currentConfig = config
+        currentConfig.risingDelta = calibratedDelta
+
         let currentRecords = records(days, from: currentStart, before: calendar.date(byAdding: .day, value: 1, to: today) ?? today)
-        let shift = detectShift(in: currentRecords, cycleStart: currentStart, calendar: calendar, config: config)
+        let shift = detectShift(in: currentRecords, cycleStart: currentStart, calendar: calendar, config: currentConfig)
         let dayNumber = daysBetween(currentStart, today, calendar: calendar) + 1
 
         let luteal = lutealLength(completed: completed, config: config)
@@ -213,6 +229,7 @@ enum CycleAnalyzer {
             dayNumber: dayNumber,
             phase: phase,
             coverline: shift?.coverline,
+            calibratedRisingDelta: observedDeltas.count >= 2 ? calibratedDelta : nil,
             ovulation: shift?.status ?? .notDetected,
             fertileWindow: window,
             nextPeriod: prediction,
