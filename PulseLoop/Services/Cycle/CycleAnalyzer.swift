@@ -45,8 +45,9 @@ struct CycleAnalyzerConfig {
     var minimumCycleDay: Int = 5
     /// Nightly temperature this far above the recent baseline suggests fever/disturbance.
     var disturbanceExcess: Double = 0.5
-    /// Luteal-phase length bounds used when deriving the personal median.
-    var lutealRange: ClosedRange<Int> = 10...16
+    /// Luteal-phase length bounds used when deriving the personal median — the published
+    /// 95 % spread, so users whose phase truly runs short or long keep their own number.
+    var lutealRange: ClosedRange<Int> = 9...17
     var defaultLutealDays: Int = 14
     /// `avoid` goal: widen the displayed fertile window by this many days on each side.
     var conservativeOpenLeadDays: Int = 2

@@ -207,6 +207,55 @@ final class CycleAnalyzerTests: XCTestCase {
         XCTAssertEqual(analysis.completedCycles.map(\.lengthDays), [28, 28])
     }
 
+    // MARK: - Personal luteal statistics
+
+    /// Builds a history of completed 28-day cycles with the given luteal lengths (period days
+    /// 1–4, then a biphasic curve whose raw rise lands `luteal` days before the next period),
+    /// followed by an open current cycle with no temperatures yet, analyzed mid-cycle — day 11,
+    /// below every flag threshold.
+    private func analysisWithCompletedLuteals(_ luteals: [Int]) -> CycleAnalysis {
+        var days: [CycleDayRecord] = []
+        for (cycle, luteal) in luteals.enumerated() {
+            let riseIndex = 29 - luteal                   // first raw high on cycle day riseIndex + 1
+            let temps: [Double?] = Array(repeating: 36.0, count: riseIndex)
+                + Array(repeating: 36.5, count: 28 - riseIndex)
+            for (index, temp) in temps.enumerated() {
+                days.append(CycleDayRecord(
+                    date: day(cycle * 28 + index),
+                    temperature: temp,
+                    isPeriod: index < 4,
+                    isDisturbed: false
+                ))
+            }
+        }
+        let currentStart = luteals.count * 28
+        for index in 0..<10 {
+            days.append(CycleDayRecord(date: day(currentStart + index), temperature: nil,
+                                       isPeriod: index < 4, isDisturbed: false))
+        }
+        return CycleAnalyzer.analyze(days: days, goal: .understand, today: day(currentStart + 10), calendar: calendar)!
+    }
+
+    /// The personal luteal median is clamped to the published 95 % spread, 9–17 days: a personal
+    /// number at the edges survives, one beyond them keeps the nearest edge.
+    func testPersonalLutealMedianKeepsPhasesInsideThePublishedSpread() {
+        XCTAssertEqual(analysisWithCompletedLuteals([9]).lutealLengthDays, 9)
+        XCTAssertEqual(analysisWithCompletedLuteals([17]).lutealLengthDays, 17)
+        XCTAssertEqual(analysisWithCompletedLuteals([8]).lutealLengthDays, 9)
+        XCTAssertEqual(analysisWithCompletedLuteals([18]).lutealLengthDays, 17)
+    }
+
+    /// One short luteal phase among normal ones is noise: the median over the recent cycles
+    /// absorbs it, and neither the median nor any flag reacts.
+    func testSingleShortLutealLeavesMedianAndFlagsUntouched() {
+        let withNoise = analysisWithCompletedLuteals([12, 13, 14, 9])
+        let withoutNoise = analysisWithCompletedLuteals([12, 13, 14])
+        XCTAssertEqual(withNoise.lutealLengthDays, 13)
+        XCTAssertEqual(withNoise.lutealLengthDays, withoutNoise.lutealLengthDays)
+        XCTAssertEqual(withNoise.flags, withoutNoise.flags)
+        XCTAssertEqual(withNoise.flags, [])
+    }
+
     func testAvoidGoalWidensTheFertileWindow() {
         var days: [CycleDayRecord] = []
         for offset in [0, 28] {
